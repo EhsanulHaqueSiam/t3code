@@ -269,6 +269,13 @@ export class Keybindings extends Context.Service<
      */
     readonly streamChanges: Stream.Stream<KeybindingsChangeEvent>;
 
+    /** Acquire before reading a snapshot to buffer changes until the stream starts. */
+    readonly subscribeChanges: Effect.Effect<
+      Stream.Stream<KeybindingsChangeEvent>,
+      never,
+      Scope.Scope
+    >;
+
     /**
      * Upsert a keybinding rule and persist the resulting configuration.
      *
@@ -691,6 +698,9 @@ const make = Effect.gen(function* () {
     getSnapshot: loadConfigStateFromCacheOrDisk,
     get streamChanges() {
       return Stream.fromPubSub(changesPubSub);
+    },
+    get subscribeChanges() {
+      return PubSub.subscribe(changesPubSub).pipe(Effect.map(Stream.fromSubscription));
     },
     upsertKeybindingRule: (input) =>
       upsertSemaphore.withPermits(1)(

@@ -1,6 +1,9 @@
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import {
   ORCHESTRATION_PROTOCOL_VERSION,
+  WS_METHODS,
+  WsSubscribeServerConfigRpc,
   type ServerConfig,
   type ServerConfigStreamEvent,
 } from "@t3tools/contracts";
@@ -16,13 +19,22 @@ import * as Path from "effect/Path";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
+import { Headers } from "effect/http";
+import { RpcGroup, RpcMessage, RpcServer } from "effect/rpc";
 import { ChildProcessSpawner } from "effect/process";
 
+import * as ServerSecretStore from "./auth/ServerSecretStore.ts";
+import * as ServerConfigModule from "./config.ts";
+import * as Keybindings from "./keybindings.ts";
+import * as SqlitePersistence from "./persistence/Sqlite.ts";
+import * as ServerSettings from "./serverSettings.ts";
 import * as ExternalLauncher from "./process/externalLauncher.ts";
 import {
   hasCompatibleOrchestrationProtocol,
   resolveAvailableEditorsForConfig,
   shouldUseBoundedThreadSnapshot,
+  subscribeServerConfig,
+  WS_RPC_SERVER_OPTIONS,
   withLateEditorConfig,
 } from "./ws.ts";
 
@@ -233,4 +245,160 @@ it.effect("recovers a reveal kind whose real probe outlasts the config timeout",
       assert.equal(late.config.shellRevealInFileManagerKind, "file-explorer");
     }
   }).pipe(Effect.scoped),
+);
+
+const layerConfigSources = Layer.mergeAll(
+  Keybindings.layer,
+  ServerSettings.layer.pipe(Layer.provide(ServerSecretStore.layer)),
+).pipe(
+  Layer.provide(Layer.fresh(SqlitePersistence.layerMemory)),
+  Layer.provide(
+    Layer.fresh(
+      ServerConfigModule.layerTest(process.cwd(), { prefix: "t3-config-subscription-test-" }),
+    ),
+  ),
+  Layer.provide(NodeServices.layer),
+);
+
+it.effect.each([
+  { source: "settings", interval: "discovery" },
+  { source: "settings", interval: "snapshot ACK" },
+  { source: "keybindings", interval: "discovery" },
+  { source: "keybindings", interval: "snapshot ACK" },
+] as const)(
+  "preserves $source changes during $interval at the config RPC boundary",
+  ({ source, interval }) =>
+    Effect.gen(function* () {
+      const keybindings = yield* Keybindings.Keybindings;
+      const settings = yield* ServerSettings.ServerSettingsService;
+      const keybindingsSubscribed = yield* Deferred.make<void>();
+      const settingsSubscribed = yield* Deferred.make<void>();
+      const keybindingsChanges = keybindings.subscribeChanges.pipe(
+        Effect.tap(() => Deferred.succeed(keybindingsSubscribed, undefined)),
+      );
+      const settingsChanges = settings.subscribeChanges.pipe(
+        Effect.tap(() => Deferred.succeed(settingsSubscribed, undefined)),
+      );
+      const initialKeybindings = (yield* keybindings.getSnapshot).keybindings;
+      const discoveryStarted = yield* Deferred.make<void>();
+      const finishDiscovery = yield* Deferred.make<void>();
+      const lateEditors = yield* Deferred.make<readonly ["vscode"]>();
+      const responses = yield* Queue.unbounded<ServerConfigStreamEvent>();
+      const group = RpcGroup.make(WsSubscribeServerConfigRpc);
+      const loadConfig = Effect.gen(function* () {
+        const shortcuts = yield* keybindings.loadConfigState;
+        const currentSettings = yield* settings.getSettings;
+        yield* Deferred.succeed(discoveryStarted, undefined);
+        yield* Deferred.await(finishDiscovery);
+        return snapshotConfig({
+          keybindings: shortcuts.keybindings,
+          issues: shortcuts.issues,
+          settings: ServerSettings.redactServerSettingsForClient(currentSettings),
+        });
+      });
+      const server = yield* RpcServer.makeNoSerialization(group, {
+        ...WS_RPC_SERVER_OPTIONS,
+        onFromServer: (response) =>
+          response._tag === "Chunk"
+            ? Effect.forEach(response.values, (event) => Queue.offer(responses, event), {
+                discard: true,
+              })
+            : Effect.void,
+      }).pipe(
+        Effect.provide(
+          group.toLayerHandler(WS_METHODS.subscribeServerConfig, () =>
+            subscribeServerConfig(loadConfig, () => Stream.empty, {
+              resolveAvailableEditors: () => Deferred.await(lateEditors),
+              resolveFileManagerRevealKind: () => Effect.succeed(undefined),
+            }).pipe(
+              Stream.provideService(Keybindings.Keybindings, {
+                ...keybindings,
+                streamChanges: Stream.unwrap(keybindingsChanges),
+                subscribeChanges: keybindingsChanges,
+              }),
+              Stream.provideService(ServerSettings.ServerSettingsService, {
+                ...settings,
+                streamChanges: Stream.unwrap(settingsChanges),
+                subscribeChanges: settingsChanges,
+              }),
+            ),
+          ),
+        ),
+      );
+      const requestId = RpcMessage.RequestId("config");
+      const acknowledge = server.write(0, { _tag: "Ack", requestId });
+      yield* server.write(0, {
+        _tag: "Request",
+        id: requestId,
+        tag: WS_METHODS.subscribeServerConfig,
+        payload: {},
+        headers: Headers.empty,
+      });
+      yield* Deferred.await(discoveryStarted);
+      assert.equal(yield* Queue.size(responses), 0);
+
+      const change = () =>
+        source === "settings"
+          ? settings
+              .updateSettings({ defaultAutoPull: true })
+              .pipe(
+                Effect.map((next) =>
+                  settingsUpdated(ServerSettings.redactServerSettingsForClient(next)),
+                ),
+              )
+          : keybindings.upsertKeybindingRule({ key: "mod+alt+y", command: "terminal.toggle" }).pipe(
+              Effect.map((next): ServerConfigStreamEvent => ({
+                version: 1,
+                type: "keybindingsUpdated",
+                payload: { keybindings: next, issues: [] },
+              })),
+            );
+      const duringDiscovery = interval === "discovery" ? yield* change() : undefined;
+      yield* Deferred.succeed(finishDiscovery, undefined);
+      const snapshot = yield* Queue.take(responses);
+      assert.equal(snapshot.type, "snapshot");
+      if (snapshot.type !== "snapshot") return yield* Effect.die("Missing initial snapshot");
+      assert.isFalse(snapshot.config.settings.defaultAutoPull);
+      assert.deepEqual(snapshot.config.keybindings, initialKeybindings);
+      const expected = duringDiscovery ?? (yield* change());
+      assert.equal(yield* Queue.size(responses), 0);
+      yield* acknowledge;
+      yield* Deferred.await(keybindingsSubscribed);
+      yield* Deferred.await(settingsSubscribed);
+
+      // A second change gives the old implementation an observable response too:
+      // it must fail on the missing first update instead of waiting for a timeout.
+      const next =
+        source === "settings"
+          ? settings
+              .updateSettings({ enableProviderUpdateChecks: false })
+              .pipe(
+                Effect.map((value) =>
+                  settingsUpdated(ServerSettings.redactServerSettingsForClient(value)),
+                ),
+              )
+          : keybindings.upsertKeybindingRule({ key: "mod+alt+z", command: "terminal.split" }).pipe(
+              Effect.map((value): ServerConfigStreamEvent => ({
+                version: 1,
+                type: "keybindingsUpdated",
+                payload: { keybindings: value, issues: [] },
+              })),
+            );
+      const latest = yield* next;
+      assert.deepEqual(yield* Queue.take(responses), expected);
+      yield* acknowledge;
+      assert.deepEqual(yield* Queue.take(responses), latest);
+      yield* acknowledge;
+      yield* Deferred.succeed(lateEditors, ["vscode"]);
+      const late = yield* Queue.take(responses);
+      assert.equal(late.type, "snapshot");
+      if (late.type === "snapshot") {
+        assert.deepEqual(late.config.availableEditors, ["vscode"]);
+        if (latest.type === "settingsUpdated")
+          assert.deepEqual(late.config.settings, latest.payload.settings);
+        if (latest.type === "keybindingsUpdated")
+          assert.deepEqual(late.config.keybindings, latest.payload.keybindings);
+      }
+      yield* server.write(0, { _tag: "Interrupt", requestId, interruptors: [] });
+    }).pipe(Effect.provide(Layer.fresh(layerConfigSources)), Effect.scoped),
 );

@@ -357,6 +357,49 @@ export const withLateEditorConfig = <E, R>(
   );
 };
 
+/** Snapshot-first server config stream, including settings and shortcut changes. */
+export const subscribeServerConfig = <E, R>(
+  loadConfig: Effect.Effect<ClientServerConfig, E, R>,
+  otherUpdates: (config: ClientServerConfig) => Stream.Stream<ServerConfigStreamEvent>,
+  launcher: EditorDiscovery,
+) =>
+  Stream.unwrap(
+    Effect.gen(function* () {
+      const keybindings = yield* Keybindings.Keybindings;
+      const serverSettings = yield* ServerSettings.ServerSettingsService;
+      // Buffer changes through discovery and the initial snapshot's RPC ACK wait.
+      const keybindingsChanges = yield* keybindings.subscribeChanges;
+      const settingsChanges = yield* serverSettings.subscribeChanges;
+      const config = yield* loadConfig;
+      const keybindingsUpdates = keybindingsChanges.pipe(
+        Stream.map((event) => ({
+          version: 1 as const,
+          type: "keybindingsUpdated" as const,
+          payload: {
+            keybindings: event.keybindings,
+            issues: event.issues,
+          },
+        })),
+      );
+      const settingsUpdates = settingsChanges.pipe(
+        Stream.map((settings) => ServerSettings.redactServerSettingsForClient(settings)),
+        Stream.map((settings) => ({
+          version: 1 as const,
+          type: "settingsUpdated" as const,
+          payload: { settings },
+        })),
+      );
+      const liveUpdates = Stream.merge(
+        keybindingsUpdates,
+        Stream.merge(settingsUpdates, otherUpdates(config)),
+      );
+      return Stream.concat(
+        rpcInitialItems([{ version: 1 as const, type: "snapshot" as const, config }]),
+        withLateEditorConfig(config, liveUpdates, launcher),
+      );
+    }),
+  );
+
 function unexpectedCompatibilityError(error: never): never {
   throw new Error(`Unhandled compatibility error: ${String(error)}`);
 }
@@ -2968,20 +3011,10 @@ const layerWsRpc = (
             }),
           ),
         [WS_METHODS.subscribeServerConfig]: (input) =>
-          Stream.unwrap(
-            Effect.gen(function* () {
+          subscribeServerConfig(
+            loadServerConfig({ usageLimitsCommand: input.usageLimitsCommand === true }),
+            (config) => {
               const usageLimitsCommand = input.usageLimitsCommand === true;
-              const config = yield* loadServerConfig({ usageLimitsCommand });
-              const keybindingsUpdates = keybindings.streamChanges.pipe(
-                Stream.map((event) => ({
-                  version: 1 as const,
-                  type: "keybindingsUpdated" as const,
-                  payload: {
-                    keybindings: event.keybindings,
-                    issues: event.issues,
-                  },
-                })),
-              );
               const providerStatuses = Stream.zipLatestWith(
                 // The registry stream carries changes only. Seed it with the current
                 // providers so a source refresh that lands before any provider change
@@ -3043,31 +3076,12 @@ const layerWsRpc = (
                       })),
                     )
                   : Stream.empty;
-              const settingsUpdates = serverSettings.streamChanges.pipe(
-                Stream.map((settings) => ServerSettings.redactServerSettingsForClient(settings)),
-                Stream.map((settings) => ({
-                  version: 1 as const,
-                  type: "settingsUpdated" as const,
-                  payload: { settings },
-                })),
+              return Stream.merge(
+                providerStatuses,
+                Stream.merge(environmentThemeUpdates, usageLimitSourceUpdates),
               );
-
-              const liveUpdates = Stream.merge(
-                keybindingsUpdates,
-                Stream.merge(
-                  providerStatuses,
-                  Stream.merge(
-                    settingsUpdates,
-                    Stream.merge(environmentThemeUpdates, usageLimitSourceUpdates),
-                  ),
-                ),
-              );
-
-              return Stream.concat(
-                rpcInitialItems([{ version: 1 as const, type: "snapshot" as const, config }]),
-                withLateEditorConfig(config, liveUpdates, externalLauncher),
-              );
-            }),
+            },
+            externalLauncher,
           ),
         [WS_METHODS.subscribeServerLifecycle]: (_input) =>
           Stream.unwrap(
