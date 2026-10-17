@@ -236,6 +236,58 @@ describe("learned routes", () => {
     expect(credentialConnectionId(connectionRouteId(learned.target))).toBe("lan");
   });
 
+  it("keeps a token paired over HTTPS off plain HTTP addresses outside the tailnet", () => {
+    const entry = entryWithRoutes(relayOnly, [PUBLIC, RELAY]);
+    const routes = mergeLearnedRoutes({
+      entry,
+      activeRoute: PUBLIC,
+      reported: [
+        { kind: "lan", httpBaseUrl: "http://192.168.1.10:3773/" },
+        { kind: "tailnet", httpBaseUrl: "http://100.101.102.103:3773/" },
+        { kind: "tailnet", httpBaseUrl: "https://desk.tail1234.ts.net/" },
+      ],
+      allowInsecure: true,
+    });
+    expect(ids(routes)).toEqual([
+      `learned:${ENVIRONMENT_ID}:http://100.101.102.103:3773@public`,
+      `learned:${ENVIRONMENT_ID}:https://desk.tail1234.ts.net@public`,
+      "public",
+      "relay",
+    ]);
+  });
+
+  it("drops a plain HTTP LAN route learned earlier over an HTTPS-paired token", () => {
+    const lanOrigin = "http://192.168.1.10:3773";
+    const stale = direct(`learned:${ENVIRONMENT_ID}:${lanOrigin}@public`, `${lanOrigin}/`);
+    const staleProfile = profileOf(stale) as BearerConnectionProfile;
+    const learnedStale: ConnectionRoute = {
+      target: stale.target,
+      profile: Option.some(new BearerConnectionProfile({ ...staleProfile, learned: true })),
+    };
+    const routes = mergeLearnedRoutes({
+      entry: entryWithRoutes(relayOnly, [learnedStale, PUBLIC, RELAY]),
+      activeRoute: PUBLIC,
+      reported: [{ kind: "lan", httpBaseUrl: `${lanOrigin}/` }],
+      allowInsecure: true,
+    });
+    expect(ids(routes)).toEqual(["public", "relay"]);
+  });
+
+  it("learns plain HTTP LAN addresses over a token paired over plain HTTP", () => {
+    const entry = entryWithRoutes(relayOnly, [LAN, RELAY]);
+    const routes = mergeLearnedRoutes({
+      entry,
+      activeRoute: LAN,
+      reported: [{ kind: "lan", httpBaseUrl: "http://10.0.0.42:3773/" }],
+      allowInsecure: true,
+    });
+    expect(ids(routes)).toEqual([
+      "lan",
+      `learned:${ENVIRONMENT_ID}:http://10.0.0.42:3773@lan`,
+      "relay",
+    ]);
+  });
+
   it("skips plain HTTP from an HTTPS page and never learns loopback", () => {
     expect(
       mergeLearnedRoutes({

@@ -218,6 +218,19 @@ export function mergeLearnedRoutes(input: {
     authorization === undefined && active._tag === "BearerConnectionTarget"
       ? credentialConnectionId(active.connectionId)
       : undefined;
+  // A paired token goes to a plain HTTP address outside the tailnet only when
+  // it was paired that way, so a token paired over HTTPS, loopback, or the
+  // tailnet keeps to the transports it was issued for.
+  const credentialRoute =
+    sharedCredential === undefined
+      ? undefined
+      : saved.find((route) => connectionRouteId(route.target) === sharedCredential);
+  const tokenAllowsPlainHttp =
+    sharedCredential === undefined ||
+    (credentialRoute !== undefined &&
+      routeHttpBaseUrl(credentialRoute)?.startsWith("http:") === true &&
+      (connectionRouteKind(credentialRoute) === "lan" ||
+        connectionRouteKind(credentialRoute) === "public"));
 
   const reported = new Map<string, URL>();
   const tailscaleOrigins = new Set<string>();
@@ -229,7 +242,10 @@ export function mergeLearnedRoutes(input: {
       continue;
     }
     if (url.protocol !== "http:" && url.protocol !== "https:") continue;
-    if (url.protocol === "http:" && !input.allowInsecure) continue;
+    if (url.protocol === "http:") {
+      if (!input.allowInsecure) continue;
+      if (endpoint.kind !== "tailnet" && !tokenAllowsPlainHttp) continue;
+    }
     // A loopback address names whichever device opens it, never the server.
     if (isLocalLoopbackHost(url.hostname)) continue;
     reported.set(url.origin, url);
