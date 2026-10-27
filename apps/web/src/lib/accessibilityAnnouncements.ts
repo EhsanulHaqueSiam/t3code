@@ -1,5 +1,10 @@
+let latestOpen = false;
+let firstWritePending = false;
+
 /** Alternating atomic live regions allow repeated user actions to be announced, as in VS Code aria.ts. */
 export function announceSidebarVisibility(open: boolean) {
+  latestOpen = open;
+  if (firstWritePending) return;
   let container = document.getElementById("workspace-visibility-alerts");
   const created = !container;
   if (!container) {
@@ -16,12 +21,16 @@ export function announceSidebarVisibility(open: boolean) {
   }
   const [first, second] = Array.from(container.children);
   const write = () => {
+    firstWritePending = false;
     const next = first!.textContent ? second! : first!;
     first!.textContent = "";
     second!.textContent = "";
-    next.textContent = `Sidebar ${open ? "shown" : "hidden"}`;
+    next.textContent = `Sidebar ${latestOpen ? "shown" : "hidden"}`;
   };
   // Screen readers ignore text written in the same task that inserts its live region.
-  if (created) setTimeout(write, 100);
-  else write();
+  // Toggles during that delay only update the state the pending write announces.
+  if (created) {
+    firstWritePending = true;
+    setTimeout(write, 100);
+  } else write();
 }
