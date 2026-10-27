@@ -1,6 +1,7 @@
 import type { EnvironmentId } from "@t3tools/contracts";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import {
+  pickSnoozePreset as pickSharedSnoozePreset,
   resolveSnoozePresets as resolveSharedSnoozePresets,
   snoozeWakeLabel,
   type SnoozePreset,
@@ -9,6 +10,7 @@ import {
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { serverEnvironment } from "../state/server";
 import { formatShortTimestamp } from "../timestampFormat";
+import { toastManager } from "./ui/toast";
 
 export { snoozeWakeLabel, type SnoozePreset };
 
@@ -18,30 +20,38 @@ export function resolveSnoozePresets(
   timestampFormat: TimestampFormat,
   environmentId: EnvironmentId,
 ): ReadonlyArray<SnoozePreset> {
-  const presets = appAtomRegistry.get(
-    serverEnvironment.settingsValueAtom(environmentId),
-  )?.snoozePresets;
-  return resolveSharedSnoozePresets(now, {
-    ...(presets ? { presets } : {}),
-    formatTime: (date) => formatShortTimestamp(date.toISOString(), timestampFormat),
-  });
+  return resolveSharedSnoozePresets(now, snoozeOptions(timestampFormat, environmentId));
 }
 
-/**
- * A menu choice re-resolved when picked, so a duration starts at selection rather than when the
- * menu opened. Falls back to the shown time while it is still ahead.
- */
+/** A shown menu choice as picked; see the shared `pickSnoozePreset`. */
 export function pickSnoozePreset(
   shown: ReadonlyArray<SnoozePreset>,
   id: string,
   timestampFormat: TimestampFormat,
   environmentId: EnvironmentId,
 ): SnoozePreset | undefined {
-  const now = new Date();
-  const fresh = resolveSnoozePresets(now, timestampFormat, environmentId).find(
-    (preset) => preset.id === id,
-  );
-  if (fresh) return fresh;
-  const original = shown.find((preset) => preset.id === id);
-  return original && Date.parse(original.snoozedUntil) > now.getTime() ? original : undefined;
+  const picked = pickSharedSnoozePreset({
+    shown,
+    id,
+    now: new Date(),
+    ...snoozeOptions(timestampFormat, environmentId),
+  });
+  if (!picked) {
+    toastManager.add({
+      type: "warning",
+      title: "Could not snooze thread",
+      description: "That snooze time has passed. Choose another time.",
+    });
+  }
+  return picked;
+}
+
+function snoozeOptions(timestampFormat: TimestampFormat, environmentId: EnvironmentId) {
+  const presets = appAtomRegistry.get(
+    serverEnvironment.settingsValueAtom(environmentId),
+  )?.snoozePresets;
+  return {
+    ...(presets ? { presets } : {}),
+    formatTime: (date: Date) => formatShortTimestamp(date.toISOString(), timestampFormat),
+  };
 }

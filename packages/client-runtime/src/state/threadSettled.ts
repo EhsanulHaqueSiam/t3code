@@ -303,6 +303,26 @@ export function resolveSnoozePresets(
   );
 }
 
+/**
+ * A menu choice as picked. A duration re-resolves from its setting (not the deduped menu) so it
+ * starts at selection. A set time keeps the shown wake, which a day change would otherwise shift.
+ */
+export function pickSnoozePreset(input: {
+  readonly shown: ReadonlyArray<SnoozePreset>;
+  readonly id: string;
+  readonly now: Date;
+  readonly presets?: ReadonlyArray<SnoozePresetSetting>;
+  readonly formatTime?: (date: Date) => string;
+}): SnoozePreset | undefined {
+  const original = input.shown.find((preset) => preset.id === input.id);
+  const ahead =
+    original && Date.parse(original.snoozedUntil) > input.now.getTime() ? original : undefined;
+  const setting = (input.presets ?? DEFAULT_SNOOZE_PRESETS).find(
+    (candidate) => candidate.kind === "after" && snoozePresetId(candidate) === input.id,
+  );
+  return (setting && resolveSnoozePreset(setting, input.now, input.formatTime)) ?? ahead;
+}
+
 export function snoozeWakeLabel(snoozedUntil: string, options: { readonly now: string }): string {
   const wakeMs = Date.parse(snoozedUntil);
   const nowMs = Date.parse(options.now);

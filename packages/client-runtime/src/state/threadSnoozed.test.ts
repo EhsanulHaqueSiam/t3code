@@ -8,6 +8,7 @@ import {
   canSnooze,
   effectiveSnoozed,
   hasQueuedTurnStart,
+  pickSnoozePreset,
   resolveSnoozePresets,
   threadRaisedHandWhileSnoozed,
   threadWokeAt,
@@ -345,6 +346,35 @@ describe("resolveSnoozePresets", () => {
         { kind: "at", day: "today", time: "18:00" },
       ]),
     ).toEqual(["In 3 hours 18:00"]);
+  });
+});
+
+describe("pickSnoozePreset", () => {
+  it("starts a duration when it is picked, even when the menu merged it with a set time", () => {
+    const presets: ReadonlyArray<SnoozePresetSetting> = [
+      { kind: "at", day: "today", time: "18:30" },
+      { kind: "after", minutes: 180 },
+    ];
+    // At 15:00 the two differ; at 15:30 "In 3 hours" lands on 18:30 and the menu shows one row.
+    const shown = resolveSnoozePresets(localDate(2026, 4, 8, 15), { presets });
+    const picked = pickSnoozePreset({
+      shown,
+      id: "after:180",
+      now: localDate(2026, 4, 8, 15, 30),
+      presets,
+    });
+    expect(picked?.snoozedUntil).toBe(localDate(2026, 4, 8, 18, 30).toISOString());
+  });
+
+  it("keeps a set time's shown wake when the day changes while the menu is open", () => {
+    // Sunday 23:59: "Tomorrow" means Monday 9:00, even if the pick lands after midnight.
+    const shown = resolveSnoozePresets(localDate(2026, 8, 30, 23, 59));
+    const picked = pickSnoozePreset({
+      shown,
+      id: "at:tomorrow:09:00",
+      now: localDate(2026, 8, 31, 0, 1),
+    });
+    expect(picked?.snoozedUntil).toBe(localDate(2026, 8, 31, 9).toISOString());
   });
 });
 
