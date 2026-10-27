@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// An eval script, not server code: it shells out to git and reads files directly.
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeChildProcess from "node:child_process";
 import * as NodeCrypto from "node:crypto";

@@ -1,3 +1,4 @@
+// Eval-only helper: it reads the local Codex config through python3 at startup.
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeChildProcess from "node:child_process";
 import * as Schema from "effect/Schema";
