@@ -61,24 +61,31 @@ async function talkToAgent(
 }
 
 describe("dev replay agent", () => {
-  it("gives each agent process its own session and each prompt its own tool ids", async () => {
+  it("keeps sessions and tool ids unique across processes and reloads", async () => {
     const prompt = (sessionId: string) => ({ method: "session/prompt", params: { sessionId } });
+    const selectTodoList = (sessionId: string) => ({
+      method: "session/set_model",
+      params: { sessionId, modelId: "todo-list" },
+    });
     const run = () =>
       talkToAgent([
         () => ({ method: "session/new", params: { cwd: "/tmp" } }),
-        (sessionId) => ({
-          method: "session/set_model",
-          params: { sessionId, modelId: "todo-list" },
-        }),
+        selectTodoList,
         prompt,
         prompt,
       ]);
     const [first, second] = await Promise.all([run(), run()]);
     expect(first.sessionId).not.toBe(second.sessionId);
-    const toolCallIds = first.received.flatMap((message) =>
+    // A server restart loads the same session in a new agent process.
+    const reloaded = await talkToAgent([
+      () => ({ method: "session/load", params: { sessionId: first.sessionId, cwd: "/tmp" } }),
+      () => selectTodoList(first.sessionId),
+      () => prompt(first.sessionId),
+    ]);
+    const toolCallIds = [...first.received, ...reloaded.received].flatMap((message) =>
       message.params?.update?.toolCallId === undefined ? [] : [message.params.update.toolCallId],
     );
-    expect(new Set(toolCallIds).size).toBe(4);
+    expect(new Set(toolCallIds).size).toBe(6);
   });
 
   it.each(SCENARIOS)("$id plays a turn without session setup frames", ({ file }) => {

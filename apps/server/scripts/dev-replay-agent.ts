@@ -208,7 +208,8 @@ function runAgent(): void {
 
   const playTurn = async (sessionId: string, turn: ReplayTurn, signal: AbortSignal) => {
     const session = sessions.get(sessionId)!;
-    const live = { sessionId, workspace: session.cwd, turnKey: `turn${session.promptCount}` };
+    // Random, so a session loaded after a restart cannot reuse earlier tool rows.
+    const live = { sessionId, workspace: session.cwd, turnKey: NodeCrypto.randomUUID() };
     for (const recorded of turn.frames) {
       const frame = materialize(recorded.frame, live) as LogicalFrame;
       if (frame.kind === "request") {
@@ -299,7 +300,10 @@ function runAgent(): void {
             code: -32602,
           });
         }
-        if (session !== undefined) session.model = String(params.modelId);
+        if (session !== undefined && session.model !== params.modelId) {
+          session.model = String(params.modelId);
+          session.promptCount = 0;
+        }
         return {};
       }
       case "session/prompt": {
