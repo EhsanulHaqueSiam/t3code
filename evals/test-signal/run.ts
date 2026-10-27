@@ -99,7 +99,7 @@ const grepAt = (entry: Case, files: Map<string, string>, pattern: string, scope:
   // Served files also exist in this checkout, so git applies its own pathspec rules to the scope.
   const matched = new Set((git(["ls-files", "--", scope || "."]) ?? "").split("\n"));
   const inScope = (path: string) => matched.has(path);
-  const fromRev = (git(["grep", "-n", "-E", pattern, entry.rev, "--", scope || "."]) ?? "")
+  const fromRev = (git(["grep", "-n", "-E", "-e", pattern, entry.rev, "--", scope || "."]) ?? "")
     .split("\n")
     .filter((line) => line !== "")
     .map((line) => line.replace(`${entry.rev}:`, ""))
