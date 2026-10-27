@@ -30,7 +30,7 @@ declare global {
 }
 
 /**
- * Starts free replay threads in dev builds: Ctrl+Alt+Shift+R opens a picker, and
+ * Starts free replay threads on the primary environment in dev builds. Ctrl+Alt+Shift+R opens a picker, and
  * `window.t3dev.replay(scenario)` does the same from the console.
  */
 export function DevReplayHost() {

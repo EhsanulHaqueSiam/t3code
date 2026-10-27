@@ -6,6 +6,7 @@
  * Each scenario is a "model"; each prompt plays the next recorded turn.
  * Unlike acp-replay-agent.ts, it does not assert the client's frames.
  */
+import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
 import * as NodeReadline from "node:readline";
 
@@ -133,14 +134,22 @@ export function streamChunks(text: string): ReadonlyArray<string> {
   return chunks.length === 0 ? [text] : chunks;
 }
 
-function materialize(value: unknown, sessionId: string, workspace: string): unknown {
-  if (typeof value === "string") return value.replaceAll("<workspace>", workspace);
-  if (Array.isArray(value)) return value.map((entry) => materialize(entry, sessionId, workspace));
+/** Fills the live session, workspace, and per-prompt tool ids, so repeated turns add rows. */
+function materialize(
+  value: unknown,
+  live: { readonly sessionId: string; readonly workspace: string; readonly turnKey: string },
+): unknown {
+  if (typeof value === "string") return value.replaceAll("<workspace>", live.workspace);
+  if (Array.isArray(value)) return value.map((entry) => materialize(entry, live));
   if (typeof value !== "object" || value === null) return value;
   return Object.fromEntries(
     Object.entries(value).map(([key, entry]) => [
       key,
-      key === "sessionId" ? sessionId : materialize(entry, sessionId, workspace),
+      key === "sessionId"
+        ? live.sessionId
+        : key === "toolCallId"
+          ? `${live.turnKey}-${String(entry)}`
+          : materialize(entry, live),
     ]),
   );
 }
@@ -164,7 +173,6 @@ function runAgent(): void {
   >();
   const pendingAgentRequests = new Map<string, (result: unknown) => void>();
   let nextAgentRequestId = 1;
-  let nextSessionNumber = 1;
 
   const send = (message: JsonRpcMessage) =>
     process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", ...message })}\n`);
@@ -183,8 +191,9 @@ function runAgent(): void {
 
   const playTurn = async (sessionId: string, turn: ReplayTurn, signal: AbortSignal) => {
     const session = sessions.get(sessionId)!;
+    const live = { sessionId, workspace: session.cwd, turnKey: `turn${session.promptCount}` };
     for (const recorded of turn.frames) {
-      const frame = materialize(recorded.frame, sessionId, session.cwd) as LogicalFrame;
+      const frame = materialize(recorded.frame, live) as LogicalFrame;
       if (frame.kind === "request") {
         await sleep(recorded.afterMs ?? FRAME_DELAY_MS, signal);
         if (signal.aborted) return;
@@ -234,7 +243,8 @@ function runAgent(): void {
           agentInfo: { name: "t3-dev-replay", version: "1" },
         };
       case "session/new": {
-        const sessionId = `dev-replay-session-${nextSessionNumber++}`;
+        // T3 starts one agent process per thread, so ids must be unique across processes.
+        const sessionId = NodeCrypto.randomUUID();
         const cwd = typeof params.cwd === "string" ? params.cwd : process.cwd();
         sessions.set(sessionId, { cwd, model: SCENARIOS[0].id, promptCount: 0, cancel: undefined });
         return {
