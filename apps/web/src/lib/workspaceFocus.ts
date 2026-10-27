@@ -33,26 +33,38 @@ export function isWorkspaceElementVisible(element: HTMLElement): boolean {
   return Array.from(element.getClientRects()).some((rect) => rect.width > 0 && rect.height > 0);
 }
 
-/**
- * Brings a restored control back into view inside its nearest scrolling list only.
- * scrollIntoView would also scroll overflow-hidden layout containers out of place.
- */
-function revealInScroller(target: HTMLElement) {
-  let scroller = target.parentElement;
-  while (scroller) {
-    const { overflowY } = getComputedStyle(scroller);
+function scrollingAncestors(target: HTMLElement) {
+  const scrollers: HTMLElement[] = [];
+  for (let element = target.parentElement; element; element = element.parentElement) {
+    const { overflowY } = getComputedStyle(element);
     if (
       (overflowY === "auto" || overflowY === "scroll") &&
-      scroller.scrollHeight > scroller.clientHeight
+      element.scrollHeight > element.clientHeight
     )
-      break;
-    scroller = scroller.parentElement;
+      scrollers.push(element);
   }
-  if (!scroller) return;
-  const box = scroller.getBoundingClientRect();
+  return scrollers;
+}
+
+function isInScrollView(target: HTMLElement) {
   const rect = target.getBoundingClientRect();
-  if (rect.top < box.top) scroller.scrollTop -= box.top - rect.top;
-  else if (rect.bottom > box.bottom) scroller.scrollTop += rect.bottom - box.bottom;
+  return scrollingAncestors(target).every((scroller) => {
+    const box = scroller.getBoundingClientRect();
+    return rect.bottom > box.top && rect.top < box.bottom;
+  });
+}
+
+/**
+ * Brings a restored control into view, innermost scrolling list first.
+ * scrollIntoView would also scroll overflow-hidden layout containers out of place.
+ */
+function revealInScrollers(target: HTMLElement) {
+  for (const scroller of scrollingAncestors(target)) {
+    const box = scroller.getBoundingClientRect();
+    const rect = target.getBoundingClientRect();
+    if (rect.top < box.top) scroller.scrollTop -= box.top - rect.top;
+    else if (rect.bottom > box.bottom) scroller.scrollTop += rect.bottom - box.bottom;
+  }
 }
 
 /** Keeps area focus local, like VS Code's layout service focusPart/visible-neighbour actions. */
@@ -111,12 +123,17 @@ export function createWorkspaceFocusController(doc: Document) {
           (element) => belongs(element) && element.tabIndex >= 0,
         )
       : undefined;
+    // Moving the timeline to an old control would also stop it following a running turn,
+    // so the conversation reuses a control only while it is still in view.
+    const isConversation = area.dataset.workspaceArea === "conversation";
     const targets = new Set([
-      previous && belongs(previous) ? previous : undefined,
-      restored,
+      previous && belongs(previous) && (!isConversation || isInScrollView(previous))
+        ? previous
+        : undefined,
+      isConversation ? undefined : restored,
       preferred,
       surfaceControl,
-      area.dataset.workspaceArea === "conversation" ? undefined : fallback,
+      isConversation ? undefined : fallback,
       area,
     ]);
     for (const target of targets) {
@@ -125,7 +142,7 @@ export function createWorkspaceFocusController(doc: Document) {
       const root = target.getRootNode();
       const active = root instanceof ShadowRoot ? root.activeElement : doc.activeElement;
       if (active === target || (active && target.contains(active))) {
-        if (target !== area) revealInScroller(target);
+        if (target !== area && !isConversation) revealInScrollers(target);
         return true;
       }
     }

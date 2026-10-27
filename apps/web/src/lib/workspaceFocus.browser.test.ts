@@ -160,4 +160,49 @@ describe("workspace area focus", () => {
     expect(document.activeElement).toBe(row);
     expect(list.scrollTop).toBeGreaterThan(0);
   });
+
+  it("reveals a restored control through nested scrolling lists", () => {
+    using fixture = setup();
+    const settings = fixture.area("settings", 1);
+    const page = document.createElement("div");
+    page.style.cssText = "height: 80px; overflow-y: auto";
+    const inner = document.createElement("div");
+    inner.style.cssText = "height: 60px; overflow-y: auto";
+    const field = document.createElement("button");
+    field.textContent = "Provider field";
+    inner.append(Object.assign(document.createElement("div"), { style: "height: 200px" }), field);
+    page.append(inner, Object.assign(document.createElement("div"), { style: "height: 400px" }));
+    settings.element.append(page);
+    const nav = fixture.area("settings-nav", 0);
+    field.focus();
+    fixture.controller.move(-1);
+    expect(document.activeElement).toBe(nav.button);
+    inner.scrollTop = 0;
+    page.scrollTop = 300;
+    fixture.controller.move(1);
+    expect(document.activeElement).toBe(field);
+    const box = page.getBoundingClientRect();
+    const rect = field.getBoundingClientRect();
+    expect(rect.bottom > box.top && rect.top < box.bottom).toBe(true);
+  });
+
+  it("does not scroll the conversation to an old control", () => {
+    using fixture = setup();
+    const conversation = fixture.area("conversation", 1);
+    const timeline = document.createElement("div");
+    timeline.style.cssText = "height: 50px; overflow-y: auto";
+    const copy = document.createElement("button");
+    copy.textContent = "Copy";
+    timeline.append(copy, Object.assign(document.createElement("div"), { style: "height: 400px" }));
+    conversation.element.append(timeline);
+    const composer = fixture.area("composer", 2);
+    copy.focus();
+    fixture.controller.move(1);
+    expect(document.activeElement).toBe(composer.button);
+    // Live follow moved the timeline to the newest output.
+    timeline.scrollTop = 300;
+    fixture.controller.move(-1);
+    expect(document.activeElement).toBe(conversation.element);
+    expect(timeline.scrollTop).toBe(300);
+  });
 });
