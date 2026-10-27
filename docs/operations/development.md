@@ -73,6 +73,17 @@ Read ports from the `[dev-runner]` output. Worktrees derive stable preferences f
 but occupied ports can shift them. `T3CODE_PORT_OFFSET` or `T3CODE_DEV_INSTANCE` can select a
 different preference when needed.
 
+### Replay provider
+
+Dev servers register `Replay (dev)`, a local ACP agent at
+[dev-replay-agent.ts](../../apps/server/scripts/dev-replay-agent.ts). It plays recorded
+ACP transcripts with simulated streaming, so the real adapter, orchestration, and UI run
+without a paid model. Each scenario is a model, and each prompt plays the next recorded turn.
+To add a scenario, add an entry to its `SCENARIOS` list that points at an ACP transcript:
+a replay fixture recorded with `record:grok-replay` or `record:fx-replay`, or a file in
+[dev-replay](../../apps/server/scripts/dev-replay). The agent replays session updates and
+permission requests, and drops session setup frames.
+
 ### Sharing and remote debugging
 
 `vp run dev --share` publishes the web port over the machine's tailnet and prints a pairing URL

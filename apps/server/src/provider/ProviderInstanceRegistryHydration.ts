@@ -1,14 +1,17 @@
 import {
   defaultInstanceIdForDriver,
+  ProviderDriverKind,
+  ProviderInstanceId,
   providerInstanceConfigEnabledFlag,
   resolveProviderInstanceEnabled,
   type ProviderInstanceConfig,
   type ProviderInstanceConfigMap,
-  type ProviderInstanceId,
   ServerSettings,
 } from "@t3tools/contracts";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Path from "effect/Path";
 import * as Stream from "effect/Stream";
 
 import * as Settings from "../serverSettings.ts";
@@ -20,7 +23,7 @@ import * as AcpRegistrySupport from "@t3tools/provider-acp-registry/server/AcpRe
 import * as ProviderHostLive from "./ProviderHostLive.ts";
 import type * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
 import type * as BackgroundPolicy from "../background/BackgroundPolicy.ts";
-import type * as ServerConfig from "../config.ts";
+import * as ServerConfig from "../config.ts";
 import type * as PortScanner from "../preview/PortScanner.ts";
 
 type ProviderInstanceRegistryHydrationEnv =
@@ -33,6 +36,7 @@ type ProviderInstanceRegistryHydrationEnv =
   | Settings.ServerSettingsService
   | BackgroundPolicy.BackgroundPolicy
   | ServerConfig.ServerConfig
+  | Path.Path
   // The Claude runner counts its CLIs as running agents for port discovery.
   | PortScanner.PortDiscovery;
 
@@ -70,6 +74,39 @@ export const deriveProviderInstanceConfigMap = (
   return merged as ProviderInstanceConfigMap;
 };
 
+const DEV_REPLAY_INSTANCE_ID = ProviderInstanceId.make("devReplay");
+
+/**
+ * Dev servers keep a free ACP agent that replays recorded turns, so UI checks need
+ * no paid model. Rewritten each start because the node and checkout paths can move.
+ */
+const seedDevReplayInstance = Effect.fn("ProviderInstanceRegistryHydration.seedDevReplayInstance")(
+  function* () {
+    const config = yield* ServerConfig.ServerConfig;
+    if (config.devUrl === undefined) return;
+    const serverSettings = yield* Settings.ServerSettingsService;
+    const path = yield* Path.Path;
+    const agentPath = yield* path.fromFileUrl(
+      new URL("../../scripts/dev-replay-agent.ts", import.meta.url),
+    );
+    const existing = (yield* serverSettings.getSettings).providerInstances[DEV_REPLAY_INSTANCE_ID];
+    yield* serverSettings.updateProviderInstance({
+      operation: "upsert",
+      instanceId: DEV_REPLAY_INSTANCE_ID,
+      instance: {
+        driver: ProviderDriverKind.make("acpRegistry"),
+        displayName: "Replay (dev)",
+        ...(existing?.enabled === undefined ? {} : { enabled: existing.enabled }),
+        config: {
+          source: "local",
+          commandPath: yield* HostProcess.ExecutablePath,
+          commandArgs: [agentPath],
+        },
+      },
+    });
+  },
+);
+
 const layerSettingsWatcher = (settingsChanges: Stream.Stream<ServerSettings>) =>
   Layer.effectDiscard(
     Effect.gen(function* () {
@@ -100,6 +137,9 @@ export const layer: Layer.Layer<
 > = Layer.unwrap(
   Effect.gen(function* () {
     const serverSettings = yield* Settings.ServerSettingsService;
+    yield* seedDevReplayInstance().pipe(
+      Effect.catchCause((cause) => Effect.logWarning("Dev replay agent unavailable", cause)),
+    );
     // Subscribe before the seed read so saves during registry construction are queued.
     const settingsChanges = yield* serverSettings.subscribeChanges;
     const initialSettings: ServerSettings | undefined = yield* serverSettings.getSettings.pipe(
