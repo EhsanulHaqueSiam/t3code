@@ -7,7 +7,7 @@ import { requestWorkspaceContentFocus, requestWorkspaceFocus } from "../lib/work
 /** User panel choices hand focus to the committed surface; automatic openings remain passive. */
 export function useWorkspacePanelFocus(threadRef: ScopedThreadRef | null) {
   const threadKey = threadRef ? scopedThreadKey(threadRef) : null;
-  // oxlint-disable-next-line t3code/react-effect-budget -- Compares consecutive panel store states, which render cannot see.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Compares consecutive panel store states, which render cannot see.
   useEffect(() => {
     if (!threadKey) return;
     return useRightPanelStore.subscribe((state, previous) => {

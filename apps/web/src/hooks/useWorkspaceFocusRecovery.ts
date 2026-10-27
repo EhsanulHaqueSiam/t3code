@@ -13,7 +13,7 @@ export function useWorkspaceFocusRecovery(
 ) {
   const ownedFocus = useRef<HTMLElement | null>(null);
   const previousLayout = useRef(layout);
-  // oxlint-disable-next-line t3code/react-effect-budget -- Tracks DOM focus, which React does not own.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Tracks DOM focus, which React does not own.
   useEffect(() => {
     const remember = () => {
       const active = document.activeElement;
@@ -25,7 +25,7 @@ export function useWorkspaceFocusRecovery(
     document.addEventListener("focusin", remember);
     return () => document.removeEventListener("focusin", remember);
   }, [selector]);
-  // oxlint-disable-next-line t3code/react-effect-budget -- A layout change can hide the focused element; recover before paint.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- A layout change can hide the focused element; recover before paint.
   useLayoutEffect(() => {
     if (previousLayout.current === layout) return;
     previousLayout.current = layout;

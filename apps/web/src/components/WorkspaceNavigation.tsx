@@ -30,7 +30,7 @@ export function useWorkspaceArea(name: string, order: number, label: string) {
 
 /** Runs once per page entry; section changes and background data retain deliberate focus. */
 export function useWorkspacePageFocus(area: string, selector?: string) {
-  // oxlint-disable-next-line t3code/react-effect-budget -- Entering a page moves DOM focus into it once the page has committed.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Entering a page moves DOM focus into it once the page has committed.
   useEffect(() => {
     const frame = requestAnimationFrame(() =>
       requestWorkspaceFocus({ area, ...(selector ? { selector } : {}) }),
@@ -56,7 +56,7 @@ export function WorkspaceNavigation({
       },
     }),
   );
-  // oxlint-disable-next-line t3code/react-effect-budget -- Area navigation listens to window keys, focus requests, and the desktop menu bridge.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Area navigation listens to window keys, focus requests, and the desktop menu bridge.
   useEffect(() => {
     const controller = createWorkspaceFocusController(document);
     let frame = 0;
