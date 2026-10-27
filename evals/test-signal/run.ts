@@ -90,9 +90,9 @@ const readAt = (entry: Case, files: Map<string, string>, path: string) =>
 const grepAt = (entry: Case, files: Map<string, string>, pattern: string, scope: string) => {
   const served = new Map(files);
   for (const path of ruleFiles) served.set(path, readAt(entry, files, path) ?? "");
-  // Match scopes and patterns the way `git grep` does: pathspec globs and POSIX EREs.
-  const inScope = (path: string) =>
-    scope === "" || scope === "." || path.startsWith(scope) || NodePath.matchesGlob(path, scope);
+  // Served files also exist in this checkout, so git applies its own pathspec rules to the scope.
+  const matched = new Set((git(["ls-files", "--", scope || "."]) ?? "").split("\n"));
+  const inScope = (path: string) => matched.has(path);
   const fromRev = (git(["grep", "-n", "-E", pattern, entry.rev, "--", scope || "."]) ?? "")
     .split("\n")
     .filter((line) => line !== "")
