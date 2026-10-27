@@ -19,6 +19,7 @@ interface AgentMessage {
     };
   };
   readonly result?: { readonly sessionId?: string; readonly stopReason?: string };
+  readonly error?: { readonly code?: number };
 }
 
 /**
@@ -109,6 +110,14 @@ describe("dev replay agent", () => {
     const methods = turns[0]!.frames.map(({ frame }) => frame.method);
     expect(methods).toContain("session/request_permission");
     expect(turns[0]!.stopReason).toBe("end_turn");
+  });
+
+  it("rejects an unknown scenario instead of playing another one", async () => {
+    const { received } = await talkToAgent([
+      () => ({ method: "session/new", params: { cwd: "/tmp" } }),
+      (sessionId) => ({ method: "session/set_model", params: { sessionId, modelId: "typo" } }),
+    ]);
+    expect(received.at(-1)?.error?.code).toBe(-32602);
   });
 
   it("ends the turn with a failed tool call when the user rejects an approval", async () => {

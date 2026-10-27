@@ -33,8 +33,10 @@ export function DevReplayHost() {
   const routeThread = useThreadShell(target?.kind === "server" ? target.threadRef : null);
   const startTurn = useOrchestrationCommand(threadEnvironment.startTurn, { reportFailure: false });
 
-  const scenarios =
-    providers.find((provider) => provider.instanceId === DEV_REPLAY_INSTANCE_ID)?.models ?? [];
+  const replayProvider = providers.find(
+    (provider) => provider.instanceId === DEV_REPLAY_INSTANCE_ID && provider.enabled,
+  );
+  const scenarios = replayProvider?.models ?? [];
   const environmentProjects = projects.filter((project) => project.environmentId === environmentId);
   const project =
     environmentProjects.find((candidate) => candidate.id === routeThread?.projectId) ??

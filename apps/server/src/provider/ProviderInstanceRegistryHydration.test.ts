@@ -110,6 +110,7 @@ describe("seedDevReplayInstance", () => {
             providerInstances: {
               [DEV_REPLAY_INSTANCE_ID]: {
                 driver: ProviderDriverKind.make("acpRegistry"),
+                displayName: "My replay",
                 enabled: false,
                 config: { source: "local", commandPath: "/old/node" },
               },
@@ -127,9 +128,10 @@ describe("seedDevReplayInstance", () => {
     ),
   );
 
-  effectIt.effect("points a dev server at the replay agent and keeps it disabled", () =>
+  effectIt.effect("points a dev server at the replay agent and keeps user edits", () =>
     seed(new URL("http://localhost:5733")).pipe(
       Effect.map((instance) => {
+        expect(instance?.displayName).toBe("My replay");
         expect(instance?.enabled).toBe(false);
         expect(instance?.config).toMatchObject({
           source: "local",

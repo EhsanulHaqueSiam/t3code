@@ -95,21 +95,20 @@ export const seedDevReplayInstance = Effect.fn(
   const commandPath = yield* HostProcess.ExecutablePath;
   const serverSettings = yield* Settings.ServerSettingsService;
   const existing = (yield* serverSettings.getSettings).providerInstances[DEV_REPLAY_INSTANCE_ID];
-  const existingConfig = existing?.config as
-    | { readonly commandPath?: unknown; readonly commandArgs?: ReadonlyArray<unknown> }
-    | undefined;
+  const existingConfig = existing?.config as Record<string, unknown> | undefined;
   // Rewritten only when stale: the node and checkout paths can move.
   if (
     existingConfig?.commandPath === commandPath &&
-    existingConfig.commandArgs?.[0] === agentPath
+    (existingConfig.commandArgs as ReadonlyArray<unknown> | undefined)?.[0] === agentPath
   ) {
     return;
   }
+  // Keeps user edits, such as turning the provider off.
   const instance: ProviderInstanceConfig = {
-    driver: ProviderDriverKind.make("acpRegistry"),
     displayName: "Replay (dev)",
-    ...(existing?.enabled === undefined ? {} : { enabled: existing.enabled }),
-    config: { source: "local", commandPath, commandArgs: [agentPath] },
+    ...existing,
+    driver: ProviderDriverKind.make("acpRegistry"),
+    config: { ...existingConfig, source: "local", commandPath, commandArgs: [agentPath] },
   };
   yield* serverSettings.updateProviderInstance({
     operation: "upsert",
