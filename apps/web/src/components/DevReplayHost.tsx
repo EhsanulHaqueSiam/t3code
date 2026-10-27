@@ -19,19 +19,9 @@ import { toastManager } from "./ui/toast";
 // Dev servers register this free ACP agent; see ProviderInstanceRegistryHydration.ts.
 const DEV_REPLAY_INSTANCE_ID = ProviderInstanceId.make("devReplay");
 
-declare global {
-  interface Window {
-    /** Dev builds only. Agents call these from the browser console. */
-    t3dev?: {
-      readonly replayScenarios: () => ReadonlyArray<string>;
-      readonly replay: (scenario?: string) => Promise<ThreadId>;
-    };
-  }
-}
-
 /**
- * Starts free replay threads on the primary environment in dev builds. Ctrl+Alt+Shift+R opens a picker, and
- * `window.t3dev.replay(scenario)` does the same from the console.
+ * Starts free replay threads on the primary environment in dev builds. Ctrl+Alt+Shift+R
+ * opens a picker, and `window.t3dev.replay(scenario)` does the same from the console.
  */
 export function DevReplayHost() {
   const [open, setOpen] = useState(false);
@@ -50,7 +40,7 @@ export function DevReplayHost() {
     environmentProjects.find((candidate) => candidate.id === routeThread?.projectId) ??
     environmentProjects[0];
 
-  const replay = useEffectEvent(async (scenario?: string): Promise<ThreadId> => {
+  const replay = async (scenario?: string): Promise<ThreadId> => {
     const model = scenario ?? scenarios[0]?.slug;
     if (environmentId === null || project === undefined || model === undefined) {
       throw new Error("Replay needs a dev server with a project and the Replay (dev) provider.");
@@ -91,15 +81,16 @@ export function DevReplayHost() {
       params: buildThreadRouteParams(scopeThreadRef(environmentId, threadId)),
     });
     return threadId;
-  });
+  };
 
+  const replayFromConsole = useEffectEvent(replay);
   const listScenarios = useEffectEvent(() => scenarios.map((scenario) => scenario.slug));
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- exposes the console API on window and listens for the hidden window hotkey
   useEffect(() => {
     window.t3dev = {
       replayScenarios: () => listScenarios(),
-      replay: (scenario) => replay(scenario),
+      replay: (scenario) => replayFromConsole(scenario),
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.ctrlKey && event.altKey && event.shiftKey && event.code === "KeyR") {

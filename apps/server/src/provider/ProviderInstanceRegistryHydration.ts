@@ -10,6 +10,7 @@ import {
 } from "@t3tools/contracts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as Stream from "effect/Stream";
@@ -37,6 +38,7 @@ type ProviderInstanceRegistryHydrationEnv =
   | BackgroundPolicy.BackgroundPolicy
   | ServerConfig.ServerConfig
   | Path.Path
+  | FileSystem.FileSystem
   // The Claude runner counts its CLIs as running agents for port discovery.
   | PortScanner.PortDiscovery;
 
@@ -74,38 +76,47 @@ export const deriveProviderInstanceConfigMap = (
   return merged as ProviderInstanceConfigMap;
 };
 
-const DEV_REPLAY_INSTANCE_ID = ProviderInstanceId.make("devReplay");
+export const DEV_REPLAY_INSTANCE_ID = ProviderInstanceId.make("devReplay");
 
 /**
- * Dev servers keep a free ACP agent that replays recorded turns, so UI checks need
- * no paid model. Rewritten each start because the node and checkout paths can move.
+ * Dev servers run from source keep a free ACP agent that replays recorded turns, so UI checks
+ * need no paid model. Bundled servers, such as desktop dev, have no agent script and skip it.
  */
-const seedDevReplayInstance = Effect.fn("ProviderInstanceRegistryHydration.seedDevReplayInstance")(
-  function* () {
-    const config = yield* ServerConfig.ServerConfig;
-    if (config.devUrl === undefined) return;
-    const serverSettings = yield* Settings.ServerSettingsService;
-    const path = yield* Path.Path;
-    const agentPath = yield* path.fromFileUrl(
-      new URL("../../scripts/dev-replay-agent.ts", import.meta.url),
-    );
-    const existing = (yield* serverSettings.getSettings).providerInstances[DEV_REPLAY_INSTANCE_ID];
-    yield* serverSettings.updateProviderInstance({
-      operation: "upsert",
-      instanceId: DEV_REPLAY_INSTANCE_ID,
-      instance: {
-        driver: ProviderDriverKind.make("acpRegistry"),
-        displayName: "Replay (dev)",
-        ...(existing?.enabled === undefined ? {} : { enabled: existing.enabled }),
-        config: {
-          source: "local",
-          commandPath: yield* HostProcess.ExecutablePath,
-          commandArgs: [agentPath],
-        },
-      },
-    });
-  },
-);
+export const seedDevReplayInstance = Effect.fn(
+  "ProviderInstanceRegistryHydration.seedDevReplayInstance",
+)(function* () {
+  const config = yield* ServerConfig.ServerConfig;
+  if (config.devUrl === undefined) return;
+  const path = yield* Path.Path;
+  const agentPath = yield* path.fromFileUrl(
+    new URL("../../scripts/dev-replay-agent.ts", import.meta.url),
+  );
+  if (!(yield* (yield* FileSystem.FileSystem).exists(agentPath))) return;
+  const commandPath = yield* HostProcess.ExecutablePath;
+  const serverSettings = yield* Settings.ServerSettingsService;
+  const existing = (yield* serverSettings.getSettings).providerInstances[DEV_REPLAY_INSTANCE_ID];
+  const existingConfig = existing?.config as
+    | { readonly commandPath?: unknown; readonly commandArgs?: ReadonlyArray<unknown> }
+    | undefined;
+  // Rewritten only when stale: the node and checkout paths can move.
+  if (
+    existingConfig?.commandPath === commandPath &&
+    existingConfig.commandArgs?.[0] === agentPath
+  ) {
+    return;
+  }
+  const instance: ProviderInstanceConfig = {
+    driver: ProviderDriverKind.make("acpRegistry"),
+    displayName: "Replay (dev)",
+    ...(existing?.enabled === undefined ? {} : { enabled: existing.enabled }),
+    config: { source: "local", commandPath, commandArgs: [agentPath] },
+  };
+  yield* serverSettings.updateProviderInstance({
+    operation: "upsert",
+    instanceId: DEV_REPLAY_INSTANCE_ID,
+    instance,
+  });
+});
 
 const layerSettingsWatcher = (settingsChanges: Stream.Stream<ServerSettings>) =>
   Layer.effectDiscard(

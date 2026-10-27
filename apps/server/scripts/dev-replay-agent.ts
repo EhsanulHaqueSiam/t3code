@@ -79,13 +79,16 @@ const REPLAYED_UPDATES = new Set([
   "usage_update",
 ]);
 
+// Only requests that ask the user. A replayed terminal/create would run a real command.
+const REPLAYED_REQUESTS = new Set(["session/request_permission", "elicitation/create"]);
+
 const CHUNK_DELAY_MS = 30;
 const FRAME_DELAY_MS = 250;
 const MAX_RECORDED_DELAY_MS = 2_000;
 const WORDS_PER_CHUNK = 3;
 
 function isReplayedFrame(frame: LogicalFrame): boolean {
-  if (frame.kind === "request") return !frame.method.startsWith("_");
+  if (frame.kind === "request") return REPLAYED_REQUESTS.has(frame.method);
   if (frame.kind !== "notification" || frame.method !== "session/update") return false;
   const update = (frame.params as { update?: { sessionUpdate?: unknown } } | undefined)?.update;
   return typeof update?.sessionUpdate === "string" && REPLAYED_UPDATES.has(update.sessionUpdate);

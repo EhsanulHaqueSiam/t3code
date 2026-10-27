@@ -23,7 +23,7 @@ inspecting or seeding SQLite. Stop the test server before direct fixture writes.
 
 ## Drive agent turns for free
 
-Do not spend a paid model to see a turn render. Dev servers register the
+Do not spend a paid model to see a turn render. `vp run dev` registers the
 `Replay (dev)` provider, which replays recorded turns with simulated streaming
 through the real adapter and orchestration. Its models are scenarios:
 `showcase` covers thinking, a plan, tool calls, an approval, and markdown.
