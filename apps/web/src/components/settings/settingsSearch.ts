@@ -398,6 +398,8 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "Snooze options",
     to: "/settings/threads",
     searchTerms: ["snooze presets times later tonight tomorrow next week remind"],
+    environmentOnly: true,
+    scope: "environment-defaults",
   },
   {
     id: "snooze-limited-threads",

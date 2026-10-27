@@ -306,6 +306,26 @@ describe("resolveSnoozePresets", () => {
     expect(new Date(presets[0]!.snoozedUntil)).toEqual(localDate(2026, 4, 20, 9));
   });
 
+  it("names the real day gap: a Monday option on Sunday is Tomorrow, a weekday a week out is Next", () => {
+    const theo: ReadonlyArray<SnoozePresetSetting> = [
+      { kind: "at", day: "tomorrow", time: "21:00" },
+      { kind: "at", day: "monday", time: "18:00" },
+      { kind: "at", day: "friday", time: "17:00" },
+    ];
+    // Sunday 14:00.
+    expect(menu(localDate(2026, 8, 30, 14), theo)).toEqual([
+      "Tomorrow 18:00",
+      "Tomorrow 21:00",
+      "Friday 17:00",
+    ]);
+    // Friday 10:00: today's 17:00 is a week away.
+    expect(menu(localDate(2026, 9, 4, 10), theo)).toEqual([
+      "Tomorrow 21:00",
+      "Next week Mon 18:00",
+      "Next Friday 17:00",
+    ]);
+  });
+
   it("shows one row when two presets wake at the same time", () => {
     // Sunday, so Tomorrow 9:00 and Next week 9:00 are the same Monday.
     expect(menu(localDate(2026, 8, 30, 7, 1))).toEqual([
@@ -314,6 +334,17 @@ describe("resolveSnoozePresets", () => {
       "This evening 18:00",
       "Tomorrow 9:00",
     ]);
+  });
+
+  it("treats a duration and a set time in the same minute as one row", () => {
+    const now = localDate(2026, 4, 8, 15);
+    now.setSeconds(25);
+    expect(
+      menu(now, [
+        { kind: "at", day: "today", time: "18:00" },
+        { kind: "after", minutes: 180 },
+      ]),
+    ).toEqual(["This evening 18:00"]);
   });
 });
 

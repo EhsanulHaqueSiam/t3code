@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   DEFAULT_SNOOZE_PRESETS,
   MAX_SNOOZE_PRESET_MINUTES,
@@ -5,7 +6,11 @@ import {
   SnoozePresetDay,
   type SnoozePresetSetting,
 } from "@t3tools/contracts/settings";
-import { resolveSnoozePreset, snoozePresetId } from "@t3tools/client-runtime/state/thread-settled";
+import {
+  resolveSnoozePreset,
+  resolveSnoozePresets,
+  snoozePresetId,
+} from "@t3tools/client-runtime/state/thread-settled";
 import * as Equal from "effect/Equal";
 import * as Schema from "effect/Schema";
 import { PlusIcon, XIcon } from "lucide-react";
@@ -32,6 +37,11 @@ const UNIT_LABELS: Record<DurationUnit, string> = {
   minutes: "minutes",
   hours: "hours",
   days: "days",
+};
+const SINGULAR_UNIT_LABELS: Record<DurationUnit, string> = {
+  minutes: "minute",
+  hours: "hour",
+  days: "day",
 };
 
 const WHEN_LABELS: Record<"after" | SnoozePresetDay, string> = {
@@ -87,9 +97,35 @@ function withWhen(preset: SnoozePresetSetting, when: string): SnoozePresetSettin
 export function SnoozePresetsRow() {
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
-  const presets = settings.snoozePresets;
-  const save = (snoozePresets: ReadonlyArray<SnoozePresetSetting>) =>
+  const saved = settings.snoozePresets;
+  // Edits build on a local draft, so a second edit before the first save echoes back
+  // does not restore what the first one changed. Echoes of our own writes keep the draft.
+  const [presets, setPresets] = useState(saved);
+  // Row keys survive removals, so a row's in-progress field state stays with that row.
+  const [keys, setKeys] = useState<ReadonlyArray<number>>(() => saved.map((_, index) => index));
+  const [nextKey, setNextKey] = useState(saved.length);
+  const [savedSource, setSavedSource] = useState(saved);
+  const [written, setWritten] = useState<ReadonlyArray<ReadonlyArray<SnoozePresetSetting>>>([]);
+  const freshKeys = (count: number) => {
+    setNextKey(nextKey + count);
+    return Array.from({ length: count }, (_, index) => nextKey + index);
+  };
+  if (!Equal.equals(savedSource, saved)) {
+    setSavedSource(saved);
+    if (!written.some((snapshot) => Equal.equals(snapshot, saved))) {
+      setPresets(saved);
+      setKeys(freshKeys(saved.length));
+    }
+  }
+  const save = (
+    snoozePresets: ReadonlyArray<SnoozePresetSetting>,
+    nextKeys: ReadonlyArray<number> = keys,
+  ) => {
+    setPresets(snoozePresets);
+    setKeys(nextKeys);
+    setWritten((previous) => [...previous.slice(-7), snoozePresets]);
     updateSettings({ snoozePresets });
+  };
   const replaceAt = (index: number, next: SnoozePresetSetting) =>
     save(presets.map((preset, candidate) => (candidate === index ? next : preset)));
 
@@ -101,16 +137,25 @@ export function SnoozePresetsRow() {
       description="Choices in every snooze menu, listed soonest first. Weekdays mean the next one after today."
       resetAction={
         Equal.equals(presets, DEFAULT_SNOOZE_PRESETS) ? null : (
-          <SettingResetButton label="snooze options" onClick={() => save(DEFAULT_SNOOZE_PRESETS)} />
+          <SettingResetButton
+            label="snooze options"
+            onClick={() => save(DEFAULT_SNOOZE_PRESETS, freshKeys(DEFAULT_SNOOZE_PRESETS.length))}
+          />
         )
       }
     >
       <SnoozePresetList
         presets={presets}
+        keys={keys}
         timestampFormat={settings.timestampFormat}
         onChange={replaceAt}
-        onRemove={(index) => save(presets.filter((_, candidate) => candidate !== index))}
-        onAdd={() => save([...presets, nextCandidate(presets)])}
+        onRemove={(index) =>
+          save(
+            presets.filter((_, candidate) => candidate !== index),
+            keys.filter((_, candidate) => candidate !== index),
+          )
+        }
+        onAdd={() => save([...presets, nextCandidate(presets)], [...keys, ...freshKeys(1)])}
       />
     </SettingsRow>
   );
@@ -118,6 +163,7 @@ export function SnoozePresetsRow() {
 
 function SnoozePresetList(props: {
   presets: ReadonlyArray<SnoozePresetSetting>;
+  keys: ReadonlyArray<number>;
   timestampFormat: Parameters<typeof formatShortTimestamp>[1];
   onChange: (index: number, preset: SnoozePresetSetting) => void;
   onRemove: (index: number) => void;
@@ -127,21 +173,25 @@ function SnoozePresetList(props: {
   const now = new Date(`${nowMinute}Z`);
   const formatTime = (date: Date) =>
     formatShortTimestamp(date.toISOString(), props.timestampFormat);
+  const seenIds = new Set<string>();
   const seenWakes = new Set<string>();
   const previews = props.presets.map((preset) => {
     const resolved = resolveSnoozePreset(preset, now, formatTime);
-    if (resolved === null) {
-      const [hours, minutes] = preset.kind === "at" ? preset.time.split(":") : [];
-      const passedAt = new Date(now);
-      passedAt.setHours(Number(hours), Number(minutes), 0, 0);
-      return { tone: "muted", text: `Hidden after ${formatTime(passedAt)}` } as const;
+    if (resolved === null) return { tone: "muted", text: "Passed for today" } as const;
+    if (seenIds.has(resolved.id)) {
+      return { tone: "muted", text: "Duplicate of an option above" } as const;
     }
     if (seenWakes.has(resolved.snoozedUntil)) {
-      return { tone: "muted", text: "Same time as an option above" } as const;
+      return { tone: "muted", text: "Same time as an option above today" } as const;
     }
+    seenIds.add(resolved.id);
     seenWakes.add(resolved.snoozedUntil);
     return { tone: "menu", label: resolved.label, when: resolved.whenLabel } as const;
   });
+
+  const menuOrder = resolveSnoozePresets(now, { presets: props.presets }).map(
+    (preset) => preset.label,
+  );
 
   return (
     <div className="flex flex-col gap-1.5 pt-3 pb-2">
@@ -149,16 +199,13 @@ function SnoozePresetList(props: {
         const preview = previews[index]!;
         return (
           <div
-            // Rows have no identity beyond their position; editing one never reorders the rest.
-            // oxlint-disable-next-line react/no-array-index-key
-            key={index}
+            key={props.keys[index]}
+            role="group"
+            aria-label={`Snooze option ${index + 1}`}
             className="flex flex-wrap items-center gap-2"
           >
             <SnoozePresetFields preset={preset} onChange={(next) => props.onChange(index, next)} />
-            <div
-              className="ml-auto flex min-w-0 items-center gap-2 text-xs text-muted-foreground"
-              aria-live="polite"
-            >
+            <div className="ml-auto flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
               {preview.tone === "menu" ? (
                 <span className="truncate">
                   <span className="text-foreground">{preview.label}</span>
@@ -170,7 +217,7 @@ function SnoozePresetList(props: {
               <Button
                 variant="ghost-muted"
                 size="icon-sm"
-                aria-label="Remove snooze option"
+                aria-label={`Remove snooze option ${index + 1}`}
                 onClick={() => props.onRemove(index)}
               >
                 <XIcon />
@@ -179,9 +226,9 @@ function SnoozePresetList(props: {
           </div>
         );
       })}
-      {props.presets.length === 0 ? (
-        <p className="text-xs text-muted-foreground">Snooze menus offer only Custom…</p>
-      ) : null}
+      <p className="text-xs text-muted-foreground">
+        {menuOrder.length === 0 ? "Menus offer only Custom…" : `Menu now: ${menuOrder.join(" · ")}`}
+      </p>
       <div>
         <Button
           variant="ghost-muted"
@@ -192,6 +239,11 @@ function SnoozePresetList(props: {
           <PlusIcon />
           Add option
         </Button>
+        {props.presets.length >= MAX_SNOOZE_PRESETS ? (
+          <span className="ps-2 text-xs text-muted-foreground">
+            Up to {MAX_SNOOZE_PRESETS} options
+          </span>
+        ) : null}
       </div>
     </div>
   );
@@ -252,8 +304,20 @@ function SnoozePresetFields(props: {
 }
 
 function DurationFields(props: { minutes: number; onChange: (minutes: number) => void }) {
-  const { amount, unit } = splitMinutes(props.minutes);
+  // The chosen unit stays put while stepping, so 59 → 60 minutes does not jump to hours.
+  const [chosenUnit, setChosenUnit] = useState(() => splitMinutes(props.minutes).unit);
+  const unit =
+    props.minutes % UNIT_MINUTES[chosenUnit] === 0 ? chosenUnit : splitMinutes(props.minutes).unit;
+  const amount = props.minutes / UNIT_MINUTES[unit];
   const maxAmount = Math.floor(MAX_SNOOZE_PRESET_MINUTES / UNIT_MINUTES[unit]);
+  // Typing stays local until the field commits (blur, Enter, or a step), so half-typed
+  // values never reach the server.
+  const [draft, setDraft] = useState<number | null>(amount);
+  const [draftSource, setDraftSource] = useState(props.minutes);
+  if (draftSource !== props.minutes) {
+    setDraftSource(props.minutes);
+    setDraft(amount);
+  }
   return (
     <>
       <NumberField
@@ -262,11 +326,16 @@ function DurationFields(props: { minutes: number; onChange: (minutes: number) =>
         min={1}
         max={maxAmount}
         step={1}
-        value={amount}
-        onValueChange={(value) => {
-          if (value !== null && Number.isInteger(value) && value >= 1 && value <= maxAmount) {
-            props.onChange(value * UNIT_MINUTES[unit]);
+        value={draft}
+        onValueChange={setDraft}
+        onValueCommitted={(value) => {
+          if (value === null) {
+            setDraft(amount);
+            return;
           }
+          const next = Math.min(maxAmount, Math.max(1, Math.round(value)));
+          setDraft(next);
+          if (next !== amount) props.onChange(next * UNIT_MINUTES[unit]);
         }}
       >
         <NumberFieldGroup>
@@ -277,9 +346,10 @@ function DurationFields(props: { minutes: number; onChange: (minutes: number) =>
       </NumberField>
       <Select
         value={unit}
-        items={UNIT_LABELS}
+        items={amount === 1 ? SINGULAR_UNIT_LABELS : UNIT_LABELS}
         onValueChange={(value) => {
           if (value === "minutes" || value === "hours" || value === "days") {
+            setChosenUnit(value);
             props.onChange(Math.min(amount * UNIT_MINUTES[value], MAX_SNOOZE_PRESET_MINUTES));
           }
         }}
@@ -290,7 +360,7 @@ function DurationFields(props: { minutes: number; onChange: (minutes: number) =>
         <SelectPopup>
           {(Object.keys(UNIT_LABELS) as DurationUnit[]).map((value) => (
             <SelectItem hideIndicator key={value} value={value}>
-              {UNIT_LABELS[value]}
+              {(amount === 1 ? SINGULAR_UNIT_LABELS : UNIT_LABELS)[value]}
             </SelectItem>
           ))}
         </SelectPopup>

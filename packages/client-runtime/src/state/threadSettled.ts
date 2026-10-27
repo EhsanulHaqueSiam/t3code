@@ -219,36 +219,29 @@ function formatSnoozeDuration(minutes: number): string {
   return pluralize(minutes, "minute");
 }
 
-function snoozePresetLabel(setting: SnoozePresetSetting): string {
-  if (setting.kind === "after") return `In ${formatSnoozeDuration(setting.minutes)}`;
-  switch (setting.day) {
-    case "today": {
-      const hour = Number(setting.time.slice(0, 2));
-      return hour < 12 ? "This morning" : hour < 17 ? "This afternoon" : "This evening";
-    }
-    case "tomorrow":
-      return "Tomorrow";
-    case "monday":
-      return "Next week";
-    default:
-      return setting.day[0]!.toUpperCase() + setting.day.slice(1);
-  }
+function capitalize(word: string): string {
+  return word[0]!.toUpperCase() + word.slice(1);
 }
 
-/** When a preset wakes from `now`, or null for a today preset whose time has passed. */
-function resolveSnoozePresetWake(setting: SnoozePresetSetting, now: Date): Date | null {
-  if (setting.kind === "after") {
-    return DateTime.toDate(DateTime.makeUnsafe(now.getTime() + setting.minutes * 60_000));
+function snoozePresetDaysAhead(
+  setting: Extract<SnoozePresetSetting, { kind: "at" }>,
+  now: Date,
+): number {
+  if (setting.day === "today") return 0;
+  if (setting.day === "tomorrow") return 1;
+  return (WEEKDAY_INDEX[setting.day] - now.getDay() + 7) % 7 || 7;
+}
+
+/** Labels follow the actual day gap, so a Monday option on a Sunday reads "Tomorrow". */
+function snoozePresetLabel(setting: SnoozePresetSetting, daysAhead: number): string {
+  if (setting.kind === "after") return `In ${formatSnoozeDuration(setting.minutes)}`;
+  if (daysAhead === 0) {
+    const hour = Number(setting.time.slice(0, 2));
+    return hour < 12 ? "This morning" : hour < 17 ? "This afternoon" : "This evening";
   }
-  const daysAhead =
-    setting.day === "today"
-      ? 0
-      : setting.day === "tomorrow"
-        ? 1
-        : (WEEKDAY_INDEX[setting.day] - now.getDay() + 7) % 7 || 7;
-  const wake = addSnoozeDays(now, daysAhead);
-  wake.setHours(Number(setting.time.slice(0, 2)), Number(setting.time.slice(3)), 0, 0);
-  return wake.getTime() > now.getTime() ? wake : null;
+  if (daysAhead === 1) return "Tomorrow";
+  if (setting.day === "monday") return "Next week";
+  return daysAhead === 7 ? `Next ${capitalize(setting.day)}` : capitalize(setting.day);
 }
 
 export function snoozePresetId(setting: SnoozePresetSetting): string {
@@ -262,17 +255,26 @@ export function resolveSnoozePreset(
   now: Date,
   formatTime: (date: Date) => string = snoozeTimeOfDayLabel,
 ): SnoozePreset | null {
-  const wake = resolveSnoozePresetWake(setting, now);
-  if (wake === null) return null;
-  // "Next week" and durations don't name the wake day, so a wake on another day shows it.
-  const labelNamesDay = setting.kind === "at" && setting.day !== "monday";
-  const sameDay = wake.toDateString() === now.toDateString();
+  let wake: Date;
+  let daysAhead = 0;
+  if (setting.kind === "after") {
+    wake = DateTime.toDate(DateTime.makeUnsafe(now.getTime() + setting.minutes * 60_000));
+  } else {
+    daysAhead = snoozePresetDaysAhead(setting, now);
+    wake = addSnoozeDays(now, daysAhead);
+    wake.setHours(Number(setting.time.slice(0, 2)), Number(setting.time.slice(3)), 0, 0);
+    // A today option whose time has passed is left out until tomorrow.
+    if (wake.getTime() <= now.getTime()) return null;
+  }
+  const label = snoozePresetLabel(setting, daysAhead);
+  // Durations and "Next week" don't name the wake day, so a wake on another day shows it.
+  const labelNamesDay = setting.kind === "at" && label !== "Next week";
   const time = formatTime(wake);
   return {
     id: snoozePresetId(setting),
-    label: snoozePresetLabel(setting),
+    label,
     whenLabel:
-      labelNamesDay || sameDay
+      labelNamesDay || wake.toDateString() === now.toDateString()
         ? time
         : `${wake.toLocaleDateString(undefined, { weekday: "short" })} ${time}`,
     snoozedUntil: wake.toISOString(),
@@ -284,15 +286,17 @@ export function resolveSnoozePresets(
   now: Date,
   options: SnoozePresetOptions = {},
 ): ReadonlyArray<SnoozePreset> {
-  const seen = new Set<string>();
+  const seen = new Set<number>();
   return (
     (options.presets ?? DEFAULT_SNOOZE_PRESETS)
       .flatMap((setting) => resolveSnoozePreset(setting, now, options.formatTime) ?? [])
       // flatMap returned a new array; Hermes has no `toSorted`.
       .sort((a, b) => Date.parse(a.snoozedUntil) - Date.parse(b.snoozedUntil))
       .filter((preset) => {
-        if (seen.has(preset.snoozedUntil)) return false;
-        seen.add(preset.snoozedUntil);
+        // By minute: a duration keeps the clock's seconds, a set time does not.
+        const wakeMinute = Math.floor(Date.parse(preset.snoozedUntil) / 60_000);
+        if (seen.has(wakeMinute)) return false;
+        seen.add(wakeMinute);
         return true;
       })
   );

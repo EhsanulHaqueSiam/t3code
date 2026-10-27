@@ -412,7 +412,7 @@ function SnoozeMenuButton(props: {
             <MenuShortcut>{preset.whenLabel}</MenuShortcut>
           </MenuItem>
         ))}
-        <MenuSeparator />
+        {presets.length > 0 ? <MenuSeparator /> : null}
         <MenuItem
           onClick={async (event) => {
             event.stopPropagation();

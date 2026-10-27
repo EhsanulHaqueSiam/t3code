@@ -2157,7 +2157,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                       {
                         id: "snooze:custom",
                         label: "Custom…",
-                        separatorBefore: true,
+                        separatorBefore: snoozePresets.length > 0,
                         disabled: !canOperateThreads(selectedThreads),
                       },
                     ],
