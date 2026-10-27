@@ -60,6 +60,7 @@ export function WorkspaceNavigation({
   useEffect(() => {
     const controller = createWorkspaceFocusController(document);
     let frame = 0;
+    let deadline = 0;
     let pending: WorkspaceFocusTarget | undefined;
     let cancelOnInput = false;
     const observer = new MutationObserver(() => scheduleFocus());
@@ -68,6 +69,7 @@ export function WorkspaceNavigation({
       cancelOnInput = false;
       observer.disconnect();
       cancelAnimationFrame(frame);
+      window.clearTimeout(deadline);
     };
     const applyFocus = () => {
       if (pending && controller.focus(pending.area, pending.restore, pending.selector))
@@ -92,6 +94,8 @@ export function WorkspaceNavigation({
         attributes: true,
         attributeFilter: ["inert", "aria-hidden", "data-workspace-unavailable"],
       });
+      // A destination that never mounts must not keep a page-wide observer alive while agents stream.
+      deadline = window.setTimeout(cancelPending, 2000);
       scheduleFocus();
     };
     const onUserInput = () => {

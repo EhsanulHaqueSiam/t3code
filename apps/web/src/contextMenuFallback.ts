@@ -308,9 +308,9 @@ export function showContextMenuFallback<T extends string>(
           break;
         }
         case "Tab":
-          // VS Code's HTML menu blocks forward Tab; Shift+Tab may leave and dismiss on blur.
-          if (event.shiftKey) return;
-          break;
+          // Tab closes the menu and continues from the element that opened it.
+          cleanup(null);
+          return;
         default:
           return;
       }
@@ -562,7 +562,11 @@ export function showContextMenuFallback<T extends string>(
     document.addEventListener("contextmenu", onContextMenu, true);
     openMenu(items, position?.x ?? 0, position?.y ?? 0, 0);
     activeContextMenuDismiss = dismiss;
-    menuStack[0]?.focus({ preventScroll: true });
+    // A keyboard-opened menu starts on its first action, a pointer-opened one on the menu itself.
+    const firstAction = previouslyFocusedElement?.matches(":focus-visible")
+      ? menuStack[0]?.querySelector<HTMLButtonElement>("button:not(:disabled)")
+      : null;
+    (firstAction ?? menuStack[0])?.focus({ preventScroll: true });
     document.addEventListener("focusin", onFocusIn);
     window.addEventListener("blur", onWindowBlur);
 

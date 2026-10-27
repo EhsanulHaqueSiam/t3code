@@ -543,6 +543,15 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   };
   const handleRowKeyDown = (event: React.KeyboardEvent) => {
     if (event.target !== event.currentTarget) return;
+    if (
+      event.key === "F2" &&
+      renamingThreadKey !== threadKey &&
+      readEnvironmentScope(thread.environmentId, AuthOrchestrationOperateScope)
+    ) {
+      event.preventDefault();
+      startThreadRename(threadKey, thread.title);
+      return;
+    }
     if (event.key !== "Enter" && event.key !== " ") return;
     event.preventDefault();
     navigateToThread(threadRef);
@@ -683,7 +692,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
         tabIndex={-1}
         data-sidebar-row={threadKey}
         data-sidebar-parent={props.navigationParent}
-        aria-label={thread.title}
         aria-current={isActive ? "page" : undefined}
         data-active={isActive}
         data-slot="sidebar-menu-sub-button"

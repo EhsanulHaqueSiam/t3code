@@ -393,7 +393,9 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
                       className="flex flex-col gap-1 max-md:border-t max-md:border-sidebar-border max-md:pt-4 max-md:first:border-t-0 max-md:first:pt-0"
                     >
                       {group.heading ? (
+                        // The group carries this label; a heading is not a valid tree child.
                         <h3
+                          aria-hidden="true"
                           className={cn(
                             "px-2 text-xs font-medium text-sidebar-muted-foreground/80",
                             !compactSearchOpen && "max-md:hidden",

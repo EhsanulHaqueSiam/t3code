@@ -1,7 +1,14 @@
-import { isWorkspaceElementVisible } from "./workspaceFocus";
-
 const ROW = "[data-sidebar-row]";
 const CONTROL = 'button, a[href], input, textarea, select, [contenteditable="true"], [tabindex]';
+const TEXT_ENTRY = 'input, textarea, select, [contenteditable="true"]';
+
+function setAttribute(element: Element, name: string, value: string) {
+  if (element.getAttribute(name) !== value) element.setAttribute(name, value);
+}
+
+function setTabIndex(element: HTMLElement, value: number) {
+  if (element.tabIndex !== value) element.tabIndex = value;
+}
 
 /** A roving DOM focus, separate from thread activation, as in VS Code's list commands. */
 export function installSidebarTree(root: HTMLElement) {
@@ -9,19 +16,35 @@ export function installSidebarTree(root: HTMLElement) {
   let focusedId: string | undefined;
   let ownsFocus = false;
   let tabStop: HTMLElement | undefined;
-  let actionRow: HTMLElement | undefined;
-  let rowActions: HTMLElement[] = [];
   let contextMenuRow: HTMLElement | undefined;
-  const leaveActions = () => {
-    for (const action of rowActions) action.tabIndex = -1;
-    actionRow = undefined;
-    rowActions = [];
+  // A control's own tab index, restored while its row holds the tree's Tab stop.
+  const ownTabIndex = new WeakMap<HTMLElement, number>();
+
+  const rowControls = (row: HTMLElement) => {
+    const id = row.dataset.sidebarRow;
+    const linked = id
+      ? root.querySelectorAll<HTMLElement>(`[data-sidebar-action-for="${CSS.escape(id)}"]`)
+      : [];
+    return [...row.querySelectorAll<HTMLElement>(CONTROL), ...linked].filter(
+      (control) => !control.matches(ROW) && !control.matches(TEXT_ENTRY),
+    );
+  };
+  // Tab reaches the buttons of the focused row only, so the tree stays one stop for the rest.
+  const setRowControlsReachable = (row: HTMLElement, reachable: boolean) => {
+    for (const control of rowControls(row)) {
+      if (!ownTabIndex.has(control)) ownTabIndex.set(control, control.tabIndex);
+      setTabIndex(control, reachable ? ownTabIndex.get(control)! : -1);
+    }
   };
 
   const setTabStop = (row: HTMLElement) => {
     if (tabStop === row) return;
-    if (tabStop) tabStop.tabIndex = -1;
-    row.tabIndex = 0;
+    if (tabStop) {
+      setTabIndex(tabStop, -1);
+      setRowControlsReachable(tabStop, false);
+    }
+    setTabIndex(row, 0);
+    setRowControlsReachable(row, true);
     tabStop = row;
     focusedId = row.dataset.sidebarRow;
   };
@@ -43,11 +66,6 @@ export function installSidebarTree(root: HTMLElement) {
       // Tab stop ready for its return while still excluding exiting row clones.
       return (!hidden || !root.contains(hidden)) && !row.matches(":disabled");
     });
-    const byId = new Map(rows.map((row) => [row.dataset.sidebarRow, row]));
-    rows = rows.filter((row) => {
-      const parent = byId.get(row.dataset.sidebarParent);
-      return !parent || parent.getAttribute("aria-expanded") !== "false";
-    });
     let selected =
       rows.find((row) => row.dataset.sidebarRow === focusedId) ??
       rows.find((row) => row === document.activeElement);
@@ -59,34 +77,32 @@ export function installSidebarTree(root: HTMLElement) {
     }
     focusedId = selected?.dataset.sidebarRow;
     tabStop = selected;
-    root.tabIndex = selected ? -1 : 0;
+    setTabIndex(root, selected ? -1 : 0);
     const siblings = new Map<string, HTMLElement[]>();
     for (const row of rows) {
       const parent = row.dataset.sidebarParent ?? "";
       const group = siblings.get(parent) ?? [];
       group.push(row);
       siblings.set(parent, group);
-      row.setAttribute("aria-level", parent ? "2" : "1");
-      row.tabIndex = row === selected ? 0 : -1;
+      setAttribute(row, "aria-level", parent ? "2" : "1");
+      setTabIndex(row, row === selected ? 0 : -1);
+    }
+    const byId = new Map(rows.map((row) => [row.dataset.sidebarRow, row]));
+    for (const control of root.querySelectorAll<HTMLElement>(CONTROL)) {
+      if (control.matches(ROW) || control.matches(TEXT_ENTRY)) continue;
+      const linked = control.dataset.sidebarActionFor;
+      const owner = control.closest<HTMLElement>(ROW) ?? (linked ? byId.get(linked) : undefined);
+      if (!owner) continue;
+      if (!ownTabIndex.has(control)) ownTabIndex.set(control, control.tabIndex);
+      setTabIndex(control, owner === selected ? ownTabIndex.get(control)! : -1);
     }
     for (const group of siblings.values())
       group.forEach((row, index) => {
-        row.setAttribute("aria-posinset", String(index + 1));
-        row.setAttribute("aria-setsize", String(group.length));
+        setAttribute(row, "aria-posinset", String(index + 1));
+        setAttribute(row, "aria-setsize", String(group.length));
       });
     for (const listItem of root.querySelectorAll("li:not([role])"))
       listItem.setAttribute("role", "presentation");
-    // F2 enters nested actions. Rename fields remain ordinary inputs while editing;
-    // the tree otherwise contributes one Tab stop.
-    for (const control of root.querySelectorAll<HTMLElement>(CONTROL)) {
-      if (
-        (control.closest(ROW) || control.dataset.sidebarActionFor) &&
-        !control.matches(ROW) &&
-        !control.matches('input, textarea, select, [contenteditable="true"]') &&
-        !rowActions.includes(control)
-      )
-        control.tabIndex = -1;
-    }
     if (
       ownsFocus &&
       selected &&
@@ -103,13 +119,6 @@ export function installSidebarTree(root: HTMLElement) {
 
   const onFocus = (event: FocusEvent) => {
     ownsFocus = root.contains(event.target as Node);
-    // A row action can open a portalled menu; keep the actions while focus is in one.
-    if (
-      !(event.target instanceof HTMLElement) ||
-      (!rowActions.includes(event.target) &&
-        !event.target.closest('[role="menu"], [role="listbox"], [data-slot$="-popup"]'))
-    )
-      leaveActions();
     if (!ownsFocus || !(event.target instanceof HTMLElement) || !event.target.matches(ROW)) return;
     setTabStop(event.target);
   };
@@ -139,40 +148,11 @@ export function installSidebarTree(root: HTMLElement) {
       event.shiftKey
     )
       return;
-    if (
-      actionRow &&
-      (event.key === "Escape" || event.key === "F2") &&
-      row instanceof HTMLElement &&
-      !row.matches('input, textarea, select, [contenteditable="true"]')
-    ) {
-      const owner = actionRow;
-      leaveActions();
-      focusRow(owner);
-      event.preventDefault();
-      event.stopPropagation();
-      return;
-    }
     if (!(row instanceof HTMLElement) || !row.matches(ROW)) return;
     const index = rows.indexOf(row);
     if (index < 0) return;
     let target: HTMLElement | undefined;
     switch (event.key) {
-      case "F2": {
-        rowActions = Array.from(root.querySelectorAll<HTMLElement>(CONTROL)).filter(
-          (control) =>
-            control !== row &&
-            (control.closest(ROW) === row ||
-              control.dataset.sidebarActionFor === row.dataset.sidebarRow) &&
-            !control.matches(`${ROW}, :disabled`) &&
-            isWorkspaceElementVisible(control),
-        );
-        if (rowActions.length > 0) {
-          actionRow = row;
-          for (const action of rowActions) action.tabIndex = 0;
-          rowActions[0]!.focus();
-        }
-        break;
-      }
       case "ArrowDown":
         target = rows[Math.min(index + 1, rows.length - 1)];
         break;
@@ -199,7 +179,7 @@ export function installSidebarTree(root: HTMLElement) {
             (candidate) => candidate.dataset.sidebarRow === row.dataset.sidebarParent,
           );
         break;
-      // Existing row handlers own Enter, Space, rename, and the context menu.
+      // Row handlers own Enter, Space, F2 rename, and the context menu.
       default:
         return;
     }

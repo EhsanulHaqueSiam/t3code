@@ -102,7 +102,11 @@ export function createWorkspaceFocusController(doc: Document) {
       target.focus({ preventScroll: true });
       const root = target.getRootNode();
       const active = root instanceof ShadowRoot ? root.activeElement : doc.activeElement;
-      if (active === target || (active && target.contains(active))) return true;
+      if (active === target || (active && target.contains(active))) {
+        // A remembered tree row may have scrolled away inside its own list.
+        if (target.matches('[role="treeitem"]')) target.scrollIntoView({ block: "nearest" });
+        return true;
+      }
     }
     return false;
   };

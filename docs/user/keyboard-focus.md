@@ -19,27 +19,22 @@ the last focused control in each area. Pull Requests has a page content area. In
 dialogs and form popups retain focus; a thread context menu closes when an area command
 moves focus away.
 
-If your browser takes `F6`, use `mod+Alt+]` and `mod+Alt+[` instead (`mod` is Command
-on macOS and Ctrl elsewhere). **Focus Next Workspace Area** and **Focus Previous
-Workspace Area** are also in the command palette and can be remapped in Settings > Keybindings.
+In a browser, plain `F6` may move to the browser's own toolbar. Use `mod+F6` and
+`mod+Shift+F6` instead (`mod` is Command on macOS and Ctrl elsewhere). **Focus Next
+Workspace Area** and **Focus Previous Workspace Area** are also in the command palette and
+can be remapped in Settings > Keybindings.
 
 ## Browse threads
 
-Tab enters the sidebar tree once. Up and Down move focus without opening a thread;
-Enter opens the focused thread or toggles a group. Right expands a group, then enters
-its first child. Left collapses it or returns to its parent. Home and End reach the
-first and last visible rows. Show more makes additional history available.
+Tab enters the sidebar once. Up and Down move between threads without opening them; Enter
+opens the focused thread or toggles a group. Right and Left expand and collapse groups.
+Tab moves from the focused thread to its buttons. `F2` renames the focused thread.
 
-Press `F2` on a row to reach its actions, then use Tab between them. Escape returns
-to the row. Search and rename fields retain their normal text editing keys.
+Press `Shift+F10` or the Context Menu key to open the focused thread's menu. Use the arrow
+keys to move through it, Enter to choose, and Escape to close it.
 
-Press `Shift+F10` or the Context Menu key on a thread to open its menu. On web, Up and Down
-wrap through enabled actions, and Home and End reach the first and last action. Right or Enter
-opens a submenu; Left or Escape returns to its parent. Escape at the main menu returns to the
-thread. Enter or Space runs the focused action. Desktop uses the system's native context menu.
-
-In the Settings section list, Up, Down, Home and End focus sections; Enter opens the focused
-section. Tab enters the section list once. Settings search keeps its own result navigation.
+The Settings section list works the same way: Up and Down move between sections, and Enter
+opens one.
 
 ## Accessible mode
 

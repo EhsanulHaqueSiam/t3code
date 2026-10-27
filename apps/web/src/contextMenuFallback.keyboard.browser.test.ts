@@ -43,11 +43,9 @@ function press(key: string, shiftKey = false) {
 
 const label = () => document.activeElement?.textContent;
 
-it("enters the menu and wraps through enabled actions only", () => {
+it("starts a keyboard-opened menu on its first action and wraps through enabled actions", () => {
   using _fixture = setup();
   void showContextMenuFallback(items);
-  expect(document.activeElement?.getAttribute("role")).toBe("menu");
-  press("ArrowDown");
   expect(label()).toBe("Rename");
   press("ArrowUp");
   expect(label()).toBe("Copy");
@@ -81,23 +79,28 @@ it("opens and cancels one submenu level at a time, then returns to the thread", 
 it("activates the focused action with Space or Enter", async () => {
   using _fixture = setup();
   const first = showContextMenuFallback(items);
-  press("ArrowDown");
   press(" ");
   await expect(first).resolves.toBe("rename");
   const second = showContextMenuFallback(items);
-  press("ArrowDown");
   press("Enter");
   await expect(second).resolves.toBe("rename");
 });
 
-it("blocks forward Tab and closes without taking focus back when focus leaves", async () => {
+it("closes on Tab and returns focus to the opener so Tab continues from there", async () => {
+  using fixture = setup();
+  const result = showContextMenuFallback(items);
+  expect(press("Tab").defaultPrevented).toBe(false);
+  await expect(result).resolves.toBeNull();
+  expect(document.activeElement).toBe(fixture.origin);
+});
+
+it("closes without taking focus back when focus moves elsewhere", async () => {
   using _fixture = setup();
   const result = showContextMenuFallback(items);
-  expect(press("Tab").defaultPrevented).toBe(true);
   const destination = document.createElement("button");
   document.body.append(destination);
+  using _destination = { [Symbol.dispose]: () => destination.remove() };
   destination.focus();
   await expect(result).resolves.toBeNull();
   expect(document.activeElement).toBe(destination);
-  destination.remove();
 });
