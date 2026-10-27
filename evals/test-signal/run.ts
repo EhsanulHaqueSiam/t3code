@@ -279,10 +279,8 @@ const summary = await Effect.runPromise(
     )).slice();
     // A third sample settles a split.
     const splits = pairs.filter(({ model, entry }) => {
-      const passes = rows.filter(
-        (row) => row.model === model && row.case === entry.id && isGraded(row),
-      );
-      return passes.length === 2 && passes.some(passed) && !passes.every(passed);
+      const own = rows.filter((row) => row.model === model && row.case === entry.id);
+      return own.length === 2 && own.some(passed) && !own.every(passed);
     });
     rows.push(
       ...(yield* Effect.forEach(splits, ({ model, entry }) => sampleSafely(entry, model, samples), {
@@ -299,11 +297,12 @@ const summary = await Effect.runPromise(
     for (const model of models) {
       const verdicts = selected.map((entry) => {
         const own = rows.filter((row) => row.model === model && row.case === entry.id);
+        // A run error counts as a failed sample, so one pass and one error is not a majority.
         const graded = own.filter(isGraded);
-        const passes = graded.filter(passed).length;
+        const passes = own.filter(passed).length;
         return {
           entry,
-          pass: graded.length > 0 && passes > graded.length / 2,
+          pass: passes > own.length / 2,
           errors: own.length - graded.length,
         };
       });
