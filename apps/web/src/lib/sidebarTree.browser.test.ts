@@ -150,4 +150,24 @@ describe("sidebar keyboard navigation", () => {
     expect(document.activeElement).toBe(first);
     expect(undo.tabIndex).toBe(0);
   });
+
+  it("gives row buttons back their own tab order when the tree reinstalls", () => {
+    using tree = setup();
+    tree.row("first");
+    const second = tree.row("second");
+    const action = (owner: string) => {
+      const button = document.createElement("button");
+      button.dataset.sidebarActionFor = owner;
+      tree.root.append(button);
+      return button;
+    };
+    const firstAction = action("first");
+    const secondAction = action("second");
+    const dispose = installSidebarTree(tree.root);
+    second.focus();
+    dispose();
+    expect([firstAction.tabIndex, secondAction.tabIndex]).toEqual([0, 0]);
+    tree.install();
+    expect([firstAction.tabIndex, secondAction.tabIndex]).toEqual([-1, 0]);
+  });
 });

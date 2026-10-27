@@ -11,7 +11,7 @@ export function useSidebarTree() {
     role: "tree",
     "aria-label": "Threads",
     "aria-description": accessible
-      ? "Use arrow keys to browse, Right and Left to expand or collapse, and Enter to open. F2 enters row actions; Escape returns to the row."
+      ? "Use arrow keys to browse, Right and Left to expand or collapse, and Enter to open. Tab reaches the focused thread's buttons. F2 renames it."
       : undefined,
   } as const;
 }

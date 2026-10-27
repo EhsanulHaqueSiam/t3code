@@ -563,9 +563,12 @@ export function showContextMenuFallback<T extends string>(
     openMenu(items, position?.x ?? 0, position?.y ?? 0, 0);
     activeContextMenuDismiss = dismiss;
     // A keyboard-opened menu starts on its first action, a pointer-opened one on the menu itself.
-    const firstAction = previouslyFocusedElement?.matches(":focus-visible")
-      ? menuStack[0]?.querySelector<HTMLButtonElement>("button:not(:disabled)")
-      : null;
+    // Text fields always match :focus-visible, so they say nothing about how the menu opened.
+    const firstAction =
+      previouslyFocusedElement?.matches(":focus-visible") &&
+      !previouslyFocusedElement.matches('input, textarea, select, [contenteditable="true"]')
+        ? menuStack[0]?.querySelector<HTMLButtonElement>("button:not(:disabled)")
+        : null;
     (firstAction ?? menuStack[0])?.focus({ preventScroll: true });
     document.addEventListener("focusin", onFocusIn);
     window.addEventListener("blur", onWindowBlur);

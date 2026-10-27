@@ -17,8 +17,8 @@ export function installSidebarTree(root: HTMLElement) {
   let ownsFocus = false;
   let tabStop: HTMLElement | undefined;
   let contextMenuRow: HTMLElement | undefined;
-  // A control's own tab index, restored while its row holds the tree's Tab stop.
-  const ownTabIndex = new WeakMap<HTMLElement, number>();
+  // A control's own tab index, restored while its row holds the Tab stop and on uninstall.
+  const ownTabIndex = new Map<HTMLElement, number>();
 
   const rowControls = (row: HTMLElement) => {
     const id = row.dataset.sidebarRow;
@@ -88,6 +88,7 @@ export function installSidebarTree(root: HTMLElement) {
       setTabIndex(row, row === selected ? 0 : -1);
     }
     const byId = new Map(rows.map((row) => [row.dataset.sidebarRow, row]));
+    for (const control of ownTabIndex.keys()) if (!control.isConnected) ownTabIndex.delete(control);
     for (const control of root.querySelectorAll<HTMLElement>(CONTROL)) {
       if (control.matches(ROW) || control.matches(TEXT_ENTRY)) continue;
       const linked = control.dataset.sidebarActionFor;
@@ -240,6 +241,8 @@ export function installSidebarTree(root: HTMLElement) {
   root.addEventListener("keyup", onKeyUp, true);
   return () => {
     observer.disconnect();
+    // A later install reads these as the controls' own tab indexes.
+    for (const [control, tabIndex] of ownTabIndex) setTabIndex(control, tabIndex);
     document.removeEventListener("focusin", onFocus);
     root.removeEventListener("keydown", onKeyDown, true);
     root.removeEventListener("keyup", onKeyUp, true);

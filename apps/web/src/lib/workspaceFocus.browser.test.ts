@@ -139,4 +139,25 @@ describe("workspace area focus", () => {
     expect(fixture.controller.move(1)).toBe(true);
     expect(document.activeElement).toBe(content.button);
   });
+
+  it("brings a restored control back into view inside its own list", () => {
+    using fixture = setup();
+    const sidebar = fixture.area("sidebar", 0);
+    const list = document.createElement("div");
+    list.style.cssText = "height: 50px; overflow-y: auto";
+    const spacer = document.createElement("div");
+    spacer.style.height = "400px";
+    const row = document.createElement("button");
+    row.textContent = "Last thread";
+    list.append(spacer, row);
+    sidebar.element.append(list);
+    const composer = fixture.area("composer", 2);
+    row.focus();
+    fixture.controller.move(1);
+    expect(document.activeElement).toBe(composer.button);
+    list.scrollTop = 0;
+    fixture.controller.move(-1);
+    expect(document.activeElement).toBe(row);
+    expect(list.scrollTop).toBeGreaterThan(0);
+  });
 });

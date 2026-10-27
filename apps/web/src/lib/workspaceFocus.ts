@@ -33,6 +33,28 @@ export function isWorkspaceElementVisible(element: HTMLElement): boolean {
   return Array.from(element.getClientRects()).some((rect) => rect.width > 0 && rect.height > 0);
 }
 
+/**
+ * Brings a restored control back into view inside its nearest scrolling list only.
+ * scrollIntoView would also scroll overflow-hidden layout containers out of place.
+ */
+function revealInScroller(target: HTMLElement) {
+  let scroller = target.parentElement;
+  while (scroller) {
+    const { overflowY } = getComputedStyle(scroller);
+    if (
+      (overflowY === "auto" || overflowY === "scroll") &&
+      scroller.scrollHeight > scroller.clientHeight
+    )
+      break;
+    scroller = scroller.parentElement;
+  }
+  if (!scroller) return;
+  const box = scroller.getBoundingClientRect();
+  const rect = target.getBoundingClientRect();
+  if (rect.top < box.top) scroller.scrollTop -= box.top - rect.top;
+  else if (rect.bottom > box.bottom) scroller.scrollTop += rect.bottom - box.bottom;
+}
+
 /** Keeps area focus local, like VS Code's layout service focusPart/visible-neighbour actions. */
 export function createWorkspaceFocusController(doc: Document) {
   const lastFocused = new Map<string, HTMLElement>();
@@ -103,8 +125,7 @@ export function createWorkspaceFocusController(doc: Document) {
       const root = target.getRootNode();
       const active = root instanceof ShadowRoot ? root.activeElement : doc.activeElement;
       if (active === target || (active && target.contains(active))) {
-        // A remembered tree row may have scrolled away inside its own list.
-        if (target.matches('[role="treeitem"]')) target.scrollIntoView({ block: "nearest" });
+        if (target !== area) revealInScroller(target);
         return true;
       }
     }
