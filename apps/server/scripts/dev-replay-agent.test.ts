@@ -29,6 +29,30 @@ describe("dev replay agent", () => {
     expect(turns[0]!.stopReason).toBe("end_turn");
   });
 
+  it("leaves frames after a prompt's response out of that turn", () => {
+    const update = (text: string) => ({
+      type: "emit_inbound",
+      frame: {
+        kind: "notification",
+        method: "session/update",
+        params: {
+          update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text } },
+        },
+      },
+    });
+    const transcript = [
+      { type: "expect_outbound", frame: { kind: "request", method: "session/prompt" } },
+      update("root"),
+      { type: "emit_inbound", frame: { kind: "response", method: "session/prompt", result: {} } },
+      update("background"),
+    ]
+      .map((entry) => JSON.stringify(entry))
+      .join("\n");
+    const turns = parseReplayTurns(transcript);
+    expect(turns).toHaveLength(1);
+    expect(turns[0]!.frames).toHaveLength(1);
+  });
+
   it("streams text in chunks that rebuild the original", () => {
     const text = "One two three four five\n\n```ts\nx\n```";
     const chunks = streamChunks(text);

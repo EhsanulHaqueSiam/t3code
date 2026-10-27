@@ -40,6 +40,7 @@ export interface ReplayTurn {
 const FIXTURES = "../src/orchestration-v2/testkit/fixtures";
 
 // Recorded fixtures the replay tests already pin, plus a hand-written UI showcase.
+// Use acpRegistry transcripts: vendor transcripts carry state in frames this agent drops.
 export const SCENARIOS = [
   { id: "showcase", name: "Showcase", file: "./dev-replay/showcase_transcript.ndjson" },
   {
@@ -50,14 +51,18 @@ export const SCENARIOS = [
   {
     id: "approval",
     name: "Write approval",
-    file: `${FIXTURES}/tool_call_read_only_on_request/grok_transcript.ndjson`,
+    file: `${FIXTURES}/tool_call_read_only_on_request/registry_transcript.ndjson`,
   },
   {
-    id: "background-subagent",
-    name: "Background subagent",
-    file: `${FIXTURES}/grok_background_subagent/grok_transcript.ndjson`,
+    id: "question",
+    name: "Question",
+    file: `${FIXTURES}/acp_elicitation/registry_transcript.ndjson`,
   },
-  { id: "multi-turn", name: "Multi turn", file: `${FIXTURES}/multi_turn/grok_transcript.ndjson` },
+  {
+    id: "multi-turn",
+    name: "Multi turn",
+    file: `${FIXTURES}/multi_turn/registry_transcript.ndjson`,
+  },
 ] as const;
 
 // Session setup and vendor state stay out: they would replace the replay agent's own models.
@@ -88,6 +93,8 @@ function isReplayedFrame(frame: LogicalFrame): boolean {
 /** Splits a recorded transcript into the turns that follow each `session/prompt`. */
 export function parseReplayTurns(ndjson: string): ReadonlyArray<ReplayTurn> {
   const turns: Array<{ frames: Array<ReplayTurn["frames"][number]>; stopReason: string }> = [];
+  // Frames after a prompt's response belong to background work, not to that turn.
+  let turn: (typeof turns)[number] | undefined;
   for (const line of ndjson.split("\n")) {
     if (line.trim().length === 0) continue;
     const entry = JSON.parse(line) as ReplayEntry;
@@ -98,14 +105,15 @@ export function parseReplayTurns(ndjson: string): ReadonlyArray<ReplayTurn> {
       frame.kind === "request" &&
       frame.method === "session/prompt"
     ) {
-      turns.push({ frames: [], stopReason: "end_turn" });
+      turn = { frames: [], stopReason: "end_turn" };
+      turns.push(turn);
       continue;
     }
-    const turn = turns.at(-1);
     if (entry.type !== "emit_inbound" || turn === undefined) continue;
     if (frame.kind === "response" && frame.method === "session/prompt") {
       const stopReason = (frame.result as { stopReason?: unknown } | undefined)?.stopReason;
       if (typeof stopReason === "string") turn.stopReason = stopReason;
+      turn = undefined;
       continue;
     }
     if (isReplayedFrame(frame)) {
@@ -160,47 +168,53 @@ function runAgent(): void {
 
   const send = (message: JsonRpcMessage) =>
     process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", ...message })}\n`);
-  const sleep = (ms: number, signal: AbortSignal) =>
+  // Resolves when `promise` settles or the turn is cancelled, whichever comes first.
+  const untilAbort = (promise: Promise<unknown>, signal: AbortSignal) =>
     new Promise<void>((resolve) => {
-      const timer = setTimeout(resolve, ms);
-      signal.addEventListener("abort", () => (clearTimeout(timer), resolve()), { once: true });
+      if (signal.aborted) return resolve();
+      signal.addEventListener("abort", () => resolve(), { once: true });
+      void promise.then(() => resolve());
     });
+  const sleep = (ms: number, signal: AbortSignal) =>
+    untilAbort(
+      new Promise((resolve) => setTimeout(resolve, Math.min(ms, MAX_RECORDED_DELAY_MS))),
+      signal,
+    );
 
   const playTurn = async (sessionId: string, turn: ReplayTurn, signal: AbortSignal) => {
     const session = sessions.get(sessionId)!;
     for (const recorded of turn.frames) {
-      if (signal.aborted) return;
-      await sleep(Math.min(recorded.afterMs ?? FRAME_DELAY_MS, MAX_RECORDED_DELAY_MS), signal);
       const frame = materialize(recorded.frame, sessionId, session.cwd) as LogicalFrame;
       if (frame.kind === "request") {
+        await sleep(recorded.afterMs ?? FRAME_DELAY_MS, signal);
+        if (signal.aborted) return;
         const id = nextAgentRequestId++;
-        const response = new Promise<unknown>((resolve) =>
-          pendingAgentRequests.set(String(id), resolve),
-        );
+        const response = new Promise((resolve) => pendingAgentRequests.set(String(id), resolve));
         send({ id, method: frame.method, params: frame.params as Record<string, unknown> });
-        await Promise.race([
-          response,
-          new Promise((resolve) => signal.addEventListener("abort", resolve)),
-        ]);
+        await untilAbort(response, signal);
+        pendingAgentRequests.delete(String(id));
         continue;
       }
       const params = frame.params as { update: { sessionUpdate: string; content?: unknown } };
       const content = params.update.content as { type?: string; text?: string } | undefined;
-      const isStreamedText =
+      const text =
         (params.update.sessionUpdate === "agent_message_chunk" ||
           params.update.sessionUpdate === "agent_thought_chunk") &&
-        content?.type === "text" &&
-        typeof content.text === "string";
-      if (!isStreamedText) {
-        send({ method: frame.method, params });
-        continue;
-      }
-      for (const [index, text] of streamChunks(content.text!).entries()) {
+        content?.type === "text"
+          ? content.text
+          : undefined;
+      // Live recordings hold one frame per token, so text defaults to the chunk pace.
+      const firstDelay = recorded.afterMs ?? (text === undefined ? FRAME_DELAY_MS : CHUNK_DELAY_MS);
+      const chunks = text === undefined ? [undefined] : streamChunks(text);
+      for (const [index, chunk] of chunks.entries()) {
+        await sleep(index === 0 ? firstDelay : CHUNK_DELAY_MS, signal);
         if (signal.aborted) return;
-        if (index > 0) await sleep(CHUNK_DELAY_MS, signal);
         send({
           method: frame.method,
-          params: { ...params, update: { ...params.update, content: { ...content, text } } },
+          params:
+            chunk === undefined
+              ? params
+              : { ...params, update: { ...params.update, content: { ...content, text: chunk } } },
         });
       }
     }
@@ -256,9 +270,12 @@ function runAgent(): void {
           stopReason: controller.signal.aborted ? "cancelled" : (turn?.stopReason ?? "end_turn"),
         };
       }
+      case "session/close":
+        sessions.get(String(params.sessionId))?.cancel?.();
+        sessions.delete(String(params.sessionId));
+        return {};
       case "authenticate":
       case "session/set_mode":
-      case "session/close":
         return {};
       default:
         throw Object.assign(new Error(`Method not found: ${message.method}`), { code: -32601 });
