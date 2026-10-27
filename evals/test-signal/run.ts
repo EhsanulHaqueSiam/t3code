@@ -88,6 +88,12 @@ const readAt = (entry: Case, files: Map<string, string>, path: string) =>
 
 /** `git grep` at `rev`, with overlay and rule files searched in their served form instead. */
 const grepAt = (entry: Case, files: Map<string, string>, pattern: string, scope: string) => {
+  // Status 2 is a bad pattern. Show grep's message, as a real tool would, so the model can fix it.
+  const check = NodeChildProcess.spawnSync("grep", ["-E", "--", pattern], {
+    input: "",
+    encoding: "utf8",
+  });
+  if (check.status !== 0 && check.status !== 1) return check.stderr.trim() || "grep failed.";
   const served = new Map(files);
   for (const path of ruleFiles) served.set(path, readAt(entry, files, path) ?? "");
   // Served files also exist in this checkout, so git applies its own pathspec rules to the scope.
