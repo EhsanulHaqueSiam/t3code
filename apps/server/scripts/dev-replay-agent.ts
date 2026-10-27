@@ -157,6 +157,20 @@ function materialize(
   );
 }
 
+/** The tool call a permission answer rejected, if the user declined or cancelled. */
+function permissionRejectedToolCallId(request: LogicalFrame, answer: unknown): string | undefined {
+  if (request.method !== "session/request_permission") return undefined;
+  const params = request.params as {
+    toolCall?: { toolCallId?: string };
+    options?: ReadonlyArray<{ optionId: string; kind: string }>;
+  };
+  const outcome = (answer as { outcome?: { outcome?: string; optionId?: string } } | undefined)
+    ?.outcome;
+  const chosen = params.options?.find((option) => option.optionId === outcome?.optionId);
+  const rejected = outcome?.outcome !== "selected" || chosen?.kind.startsWith("reject") === true;
+  return rejected ? params.toolCall?.toolCallId : undefined;
+}
+
 function runAgent(): void {
   const turnsByScenario = new Map<string, ReadonlyArray<ReplayTurn>>();
   const loadTurns = (scenarioId: string) => {
@@ -201,11 +215,25 @@ function runAgent(): void {
         await sleep(recorded.afterMs ?? FRAME_DELAY_MS, signal);
         if (signal.aborted) return;
         const id = nextAgentRequestId++;
-        const response = new Promise((resolve) => pendingAgentRequests.set(String(id), resolve));
+        let answer: unknown;
+        const response = new Promise((resolve) =>
+          pendingAgentRequests.set(String(id), (result) => resolve((answer = result))),
+        );
         send({ id, method: frame.method, params: frame.params as Record<string, unknown> });
         await untilAbort(response, signal);
         pendingAgentRequests.delete(String(id));
-        continue;
+        if (signal.aborted) return;
+        const toolCallId = permissionRejectedToolCallId(frame, answer);
+        if (toolCallId === undefined) continue;
+        // The recording only has the approved path, so a rejection ends the turn here.
+        send({
+          method: "session/update",
+          params: {
+            sessionId,
+            update: { sessionUpdate: "tool_call_update", toolCallId, status: "failed" },
+          },
+        });
+        return;
       }
       const params = frame.params as { update: { sessionUpdate: string; content?: unknown } };
       const content = params.update.content as { type?: string; text?: string } | undefined;
@@ -239,19 +267,22 @@ function runAgent(): void {
         return {
           protocolVersion: 1,
           agentCapabilities: {
-            loadSession: false,
+            loadSession: true,
             promptCapabilities: { image: false, audio: false, embeddedContext: true },
           },
           authMethods: [],
           agentInfo: { name: "t3-dev-replay", version: "1" },
         };
-      case "session/new": {
+      case "session/new":
+      case "session/load": {
         // T3 starts one agent process per thread, so ids must be unique across processes.
-        const sessionId = NodeCrypto.randomUUID();
+        // Loading after a restart keeps the thread usable; T3 already holds its history.
+        const sessionId =
+          message.method === "session/load" ? String(params.sessionId) : NodeCrypto.randomUUID();
         const cwd = typeof params.cwd === "string" ? params.cwd : process.cwd();
         sessions.set(sessionId, { cwd, model: SCENARIOS[0].id, promptCount: 0, cancel: undefined });
         return {
-          sessionId,
+          ...(message.method === "session/new" ? { sessionId } : {}),
           models: {
             currentModelId: SCENARIOS[0].id,
             availableModels: SCENARIOS.map((scenario) => ({
@@ -263,9 +294,12 @@ function runAgent(): void {
       }
       case "session/set_model": {
         const session = sessions.get(String(params.sessionId));
-        if (session !== undefined && typeof params.modelId === "string") {
-          session.model = params.modelId;
+        if (!SCENARIOS.some((scenario) => scenario.id === params.modelId)) {
+          throw Object.assign(new Error(`Unknown replay scenario ${String(params.modelId)}`), {
+            code: -32602,
+          });
         }
+        if (session !== undefined) session.model = String(params.modelId);
         return {};
       }
       case "session/prompt": {
@@ -277,8 +311,11 @@ function runAgent(): void {
         session.promptCount += 1;
         const controller = new AbortController();
         session.cancel = () => controller.abort();
-        if (turn !== undefined) await playTurn(sessionId, turn, controller.signal);
-        session.cancel = undefined;
+        try {
+          if (turn !== undefined) await playTurn(sessionId, turn, controller.signal);
+        } finally {
+          session.cancel = undefined;
+        }
         return {
           stopReason: controller.signal.aborted ? "cancelled" : (turn?.stopReason ?? "end_turn"),
         };
@@ -298,7 +335,13 @@ function runAgent(): void {
   const input = NodeReadline.createInterface({ input: process.stdin, crlfDelay: Infinity });
   input.on("line", (line) => {
     if (line.trim().length === 0) return;
-    const message = JSON.parse(line) as JsonRpcMessage;
+    let message: JsonRpcMessage;
+    try {
+      message = JSON.parse(line) as JsonRpcMessage;
+    } catch {
+      process.stderr.write(`dev replay agent ignored a line that is not JSON\n`);
+      return;
+    }
     if (message.method === undefined) {
       const resolve = pendingAgentRequests.get(String(message.id));
       pendingAgentRequests.delete(String(message.id));

@@ -11,12 +11,24 @@ import { parseReplayTurns, SCENARIOS, streamChunks } from "./dev-replay-agent.ts
 interface AgentMessage {
   readonly id?: number;
   readonly method?: string;
-  readonly params?: { readonly update?: { readonly toolCallId?: string } };
-  readonly result?: { readonly sessionId?: string };
+  readonly params?: {
+    readonly update?: {
+      readonly sessionUpdate?: string;
+      readonly toolCallId?: string;
+      readonly status?: string;
+    };
+  };
+  readonly result?: { readonly sessionId?: string; readonly stopReason?: string };
 }
 
-/** Runs the agent over stdio and returns every message it sent until each request is answered. */
-async function talkToAgent(requests: ReadonlyArray<(sessionId: string) => object>) {
+/**
+ * Runs the agent over stdio and returns every message it sent until each request is answered.
+ * Permission requests get `permissionOptionId`.
+ */
+async function talkToAgent(
+  requests: ReadonlyArray<(sessionId: string) => object>,
+  permissionOptionId = "allow-once",
+) {
   const agent = NodeChildProcess.spawn(
     process.execPath,
     [NodeURL.fileURLToPath(new URL("./dev-replay-agent.ts", import.meta.url))],
@@ -33,6 +45,10 @@ async function talkToAgent(requests: ReadonlyArray<(sessionId: string) => object
       for (;;) {
         const message = JSON.parse((await lines.next()).value as string) as AgentMessage;
         received.push(message);
+        if (message.method === "session/request_permission") {
+          const result = { outcome: { outcome: "selected", optionId: permissionOptionId } };
+          agent.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id: message.id, result })}\n`);
+        }
         if (message.id !== index + 1 || message.method !== undefined) continue;
         sessionId = message.result?.sessionId ?? sessionId;
         break;
@@ -86,6 +102,22 @@ describe("dev replay agent", () => {
     const methods = turns[0]!.frames.map(({ frame }) => frame.method);
     expect(methods).toContain("session/request_permission");
     expect(turns[0]!.stopReason).toBe("end_turn");
+  });
+
+  it("ends the turn with a failed tool call when the user rejects an approval", async () => {
+    const { received } = await talkToAgent(
+      [
+        () => ({ method: "session/new", params: { cwd: "/tmp" } }),
+        (sessionId) => ({ method: "session/prompt", params: { sessionId } }),
+      ],
+      "reject-once",
+    );
+    const updates = received.flatMap((message) =>
+      message.params?.update === undefined ? [] : [message.params.update],
+    );
+    expect(updates.at(-1)).toMatchObject({ sessionUpdate: "tool_call_update", status: "failed" });
+    expect(updates.some((update) => update.toolCallId?.endsWith("showcase-test"))).toBe(false);
+    expect(received.at(-1)?.result?.stopReason).toBe("end_turn");
   });
 
   it("leaves frames after a prompt's response out of that turn", () => {
