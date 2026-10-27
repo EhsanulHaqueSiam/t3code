@@ -1003,8 +1003,6 @@ export const SystemSettingsPaneSchema = Schema.Literals(["full-disk-access"]);
 export type SystemSettingsPane = typeof SystemSettingsPaneSchema.Type;
 
 export interface DesktopBridge {
-  getAccessibilitySupport?: () => Promise<boolean>;
-  onAccessibilitySupportChanged?: (listener: (enabled: boolean) => void) => () => void;
   getAppBranding: () => DesktopAppBranding | null;
   getRelayTelemetryEnabled?: () => boolean;
   getPathForFile?: (file: File) => string;

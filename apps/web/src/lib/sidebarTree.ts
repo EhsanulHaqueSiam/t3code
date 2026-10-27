@@ -10,6 +10,13 @@ function setTabIndex(element: HTMLElement, value: number) {
   if (element.tabIndex !== value) element.tabIndex = value;
 }
 
+export const SIDEBAR_TREE_PROPS = { role: "tree", "aria-label": "Threads" } as const;
+
+/** Ref callback for a sidebar list; installs the tree and returns its cleanup. */
+export function attachSidebarTree(element: HTMLElement | null) {
+  return element ? installSidebarTree(element) : undefined;
+}
+
 /** A roving DOM focus, separate from thread activation, as in VS Code's list commands. */
 export function installSidebarTree(root: HTMLElement) {
   let rows: HTMLElement[] = [];

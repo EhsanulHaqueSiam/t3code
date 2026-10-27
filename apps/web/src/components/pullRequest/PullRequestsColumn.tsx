@@ -13,7 +13,7 @@ import {
 } from "../WorkspaceBreadcrumb";
 import { WorkspacePageContainer } from "../WorkspacePageContainer";
 import { WorkspacePageHeader } from "../WorkspacePageHeader";
-import { useWorkspaceArea, useWorkspacePageFocus } from "../WorkspaceNavigation";
+import { workspaceAreaProps, useWorkspacePageFocus } from "../WorkspaceNavigation";
 import { useWorkspaceFocusRecovery } from "~/hooks/useWorkspaceFocusRecovery";
 import { PullRequestCompactFilterMenu } from "./PullRequestCompactFilterMenu";
 import type { PullRequestFilterOption } from "./PullRequestListFilters";
@@ -110,7 +110,7 @@ export function PullRequestsColumn({
   listBody: ReactNode;
   scrollRef: RefObject<HTMLDivElement | null>;
 }) {
-  const contentArea = useWorkspaceArea("pull-requests", 1, "Pull requests");
+  const contentArea = workspaceAreaProps("pull-requests", 1, "Pull requests");
   useWorkspacePageFocus("pull-requests");
   useWorkspaceFocusRecovery('[data-workspace-area="pull-requests"]', maximizedAway, "panel");
   const markerRef = useRef<HTMLDivElement | null>(null);

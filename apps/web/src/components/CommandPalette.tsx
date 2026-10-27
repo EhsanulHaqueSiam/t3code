@@ -95,7 +95,6 @@ import {
   restoreWorkspaceFocusFromPalette,
   requestWorkspaceFocus,
 } from "../lib/workspaceFocus";
-import { persistClientSettingsPatch } from "../hooks/useSettings";
 import {
   composerPromptLink,
   copyPromptLink,
@@ -1537,17 +1536,6 @@ function OpenCommandPaletteDialog(props: {
     },
   });
 
-  for (const mode of ["auto", "on", "off"] as const) {
-    const title = `Accessible mode: ${mode === "auto" ? "Auto" : mode === "on" ? "On" : "Off"}${clientSettings.accessibilitySupport === mode ? " (current)" : ""}`;
-    actionItems.push({
-      kind: "action",
-      value: `action:accessible-mode:${mode}`,
-      title,
-      searchTerms: [title, "accessibility", "screen reader", "navigation hints"],
-      icon: <SettingsIcon className={ITEM_ICON_CLASS} />,
-      run: async () => persistClientSettingsPatch({ accessibilitySupport: mode }),
-    });
-  }
   for (const direction of [1, -1] as const) {
     const title = direction === 1 ? "Focus Next Workspace Area" : "Focus Previous Workspace Area";
     actionItems.push({

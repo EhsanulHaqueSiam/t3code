@@ -9,7 +9,7 @@ import {
 } from "react";
 import { useLocation, useRouter, type AnyRouter } from "@tanstack/react-router";
 
-import { WorkspaceNavigation, useWorkspaceArea } from "./WorkspaceNavigation";
+import { WorkspaceNavigation, workspaceAreaProps } from "./WorkspaceNavigation";
 import { isCommandPaletteOpen } from "../commandPaletteBus";
 import { isElectron } from "../env";
 import {
@@ -375,7 +375,7 @@ function SidebarControl() {
 
 export function AppSidebarLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
-  const sidebarArea = useWorkspaceArea("sidebar", 0, "Threads");
+  const sidebarArea = workspaceAreaProps("sidebar", 0, "Threads");
   const legacySidebarEnabled = useLegacySidebarEnabled();
   const [sidebarRouteReveal] = useState<SidebarRouteReveal>(() => ({
     observedKey: null,

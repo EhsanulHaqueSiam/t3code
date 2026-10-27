@@ -35,10 +35,3 @@ keys to move through it, Enter to choose, and Escape to close it.
 
 The Settings section list works the same way: Up and Down move between sections, and Enter
 opens one.
-
-## Accessible mode
-
-Choose **Accessible mode** in Settings > General or the command palette. **Auto** uses
-desktop screen reader detection. In a browser, choose **On** to enable navigation hints.
-**Off** removes the extra hints while retaining labels and keyboard navigation.
-The preference applies immediately and is saved on this client.

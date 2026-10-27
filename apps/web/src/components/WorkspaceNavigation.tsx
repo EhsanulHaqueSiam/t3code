@@ -12,17 +12,12 @@ import {
   type WorkspaceFocusTarget,
   requestWorkspaceFocus,
 } from "../lib/workspaceFocus";
-import { useAccessibilitySupport } from "../hooks/useAccessibilitySupport";
 
-export function useWorkspaceArea(name: string, order: number, label: string) {
-  const accessible = useAccessibilitySupport();
+export function workspaceAreaProps(name: string, order: number, label: string) {
   return {
     "data-workspace-area": name,
     "data-workspace-order": order,
     "aria-label": label,
-    "aria-description": accessible
-      ? "Use the next or previous workspace area command to move between areas."
-      : undefined,
     role: "region",
     tabIndex: -1,
   } as const;

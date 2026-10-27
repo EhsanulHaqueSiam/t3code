@@ -1,4 +1,4 @@
-import { useWorkspaceArea, useWorkspacePageFocus } from "./WorkspaceNavigation";
+import { workspaceAreaProps, useWorkspacePageFocus } from "./WorkspaceNavigation";
 import { MessageSquareDashedIcon, PlusIcon } from "lucide-react";
 
 import { openCommandPalette } from "../commandPaletteBus";
@@ -11,7 +11,7 @@ import { SidebarInset } from "./ui/sidebar";
 import { WorkspacePageHeader } from "./WorkspacePageHeader";
 
 export function NoProjectsHero() {
-  const contentArea = useWorkspaceArea("home", 1, "Home");
+  const contentArea = workspaceAreaProps("home", 1, "Home");
   useWorkspacePageFocus("home");
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const { scratchEnvironmentId, startScratchThread } = useScratchProject();

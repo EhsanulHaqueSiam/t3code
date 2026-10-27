@@ -1,4 +1,4 @@
-import { useSidebarTree } from "../hooks/useSidebarTree";
+import { attachSidebarTree, SIDEBAR_TREE_PROPS } from "../lib/sidebarTree";
 import { type EnvironmentId, type ScopedProjectRef } from "@t3tools/contracts";
 import type { EnvironmentServerConfig } from "@t3tools/client-runtime/connection";
 import { ThreadContextDragGhost } from "./chat/ThreadContextDragGhost";
@@ -1539,7 +1539,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     };
   };
 
-  const { ref: attachSidebarTree, ...sidebarTree } = useSidebarTree();
   const attachTreeRef = (node: HTMLUListElement) => {
     const detachMotion = attachListMotionRef(node);
     const detachTree = attachSidebarTree(node);
@@ -3040,7 +3039,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               >
                 <SortableContext items={sortableIds} strategy={sidebarSortingStrategy}>
                   <ul
-                    {...sidebarTree}
+                    {...SIDEBAR_TREE_PROPS}
                     ref={attachTreeRef}
                     className={cn(
                       "relative flex flex-col gap-px",

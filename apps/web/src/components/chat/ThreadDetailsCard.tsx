@@ -1,4 +1,4 @@
-import { useWorkspaceArea } from "../WorkspaceNavigation";
+import { workspaceAreaProps } from "../WorkspaceNavigation";
 import { useLayoutEffect, useState, type ReactNode, type RefObject } from "react";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { ScrollArea } from "../ui/scroll-area";
@@ -25,7 +25,7 @@ export function ThreadDetailsCard({
   handle: ReturnType<typeof PopoverCreateHandle>;
   children: (density: "full" | "compact" | "essential") => ReactNode;
 }) {
-  const detailsArea = useWorkspaceArea("details", 3, "Thread details");
+  const detailsArea = workspaceAreaProps("details", 3, "Thread details");
   const canvas = useChatCanvas();
   const preferredPlacement = canvas?.preferredDetailsCard ?? null;
   const placement = canvas?.detailsCardPlacement ?? null;

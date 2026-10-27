@@ -1,4 +1,4 @@
-import { useWorkspaceArea } from "./WorkspaceNavigation";
+import { workspaceAreaProps } from "./WorkspaceNavigation";
 import { useWorkspacePanelFocus } from "../hooks/useWorkspacePanelFocus";
 import { useWorkspaceFocusRecovery } from "../hooks/useWorkspaceFocusRecovery";
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
@@ -708,8 +708,8 @@ export default function ChatView(props: ChatViewProps) {
   const legendListRef = useRef<LegendListRef | null>(null);
   const getTimelineScrollableNode = () => legendListRef.current?.getScrollableNode() ?? null;
   const getTimelineScrollableNodeStable = useStableCallback(getTimelineScrollableNode);
-  const conversationArea = useWorkspaceArea("conversation", 1, "Conversation");
-  const composerArea = useWorkspaceArea("composer", 2, "Message input");
+  const conversationArea = workspaceAreaProps("conversation", 1, "Conversation");
+  const composerArea = workspaceAreaProps("composer", 2, "Message input");
   const [composerOverlayElement, setComposerOverlayElement] = useState<HTMLDivElement | null>(null);
   const [composerTimelineInset, setComposerTimelineInset] = useState(0);
   const composerTimelineInsetRef = useRef(0);

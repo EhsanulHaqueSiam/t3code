@@ -1,4 +1,4 @@
-import { useWorkspaceArea } from "../components/WorkspaceNavigation";
+import { workspaceAreaProps } from "../components/WorkspaceNavigation";
 import { Outlet, createFileRoute, redirect, useLocation } from "@tanstack/react-router";
 import { useState, type ReactNode } from "react";
 import { RotateCcwIcon } from "lucide-react";
@@ -107,7 +107,7 @@ function SettingsScopeBoundary({ pathname, children }: { pathname: string; child
 }
 
 function SettingsContentLayout() {
-  const contentArea = useWorkspaceArea("settings", 1, "Settings content");
+  const contentArea = workspaceAreaProps("settings", 1, "Settings content");
   const location = useLocation();
   const { search, environment } = useSettingsScope();
   const contentScopeKey =

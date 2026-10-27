@@ -57,8 +57,7 @@ import {
 import { useAvailableSettingsSearchItems } from "./useAvailableSettingsSearchItems";
 import { validateSettingsScopeSearch } from "./settingsScope";
 import { useSettingsSectionNavigation } from "./useSettingsSectionNavigation";
-import { useAccessibilitySupport } from "../../hooks/useAccessibilitySupport";
-import { useWorkspaceArea } from "../WorkspaceNavigation";
+import { workspaceAreaProps } from "../WorkspaceNavigation";
 
 const SnapShotIcon = createLucideIcon("snap-shot", [
   [
@@ -126,8 +125,7 @@ function SettingsSectionIcon({ to }: { to: SettingsPath }) {
 }
 
 export function SettingsSidebarNav({ pathname }: { pathname: string }) {
-  const navArea = useWorkspaceArea("settings-nav", 0, "Settings sections");
-  const accessible = useAccessibilitySupport();
+  const navArea = workspaceAreaProps("settings-nav", 0, "Settings sections");
   const navigate = useNavigate();
   const currentHash = useLocation({ select: (location) => location.hash });
   const currentSearch = useLocation({ select: (location) => location.search });
@@ -378,11 +376,6 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
                   {...sectionNavigation.containerProps}
                   role="tree"
                   aria-label="Settings sections"
-                  aria-description={
-                    accessible
-                      ? "Use Up and Down, Home or End to focus a section. Enter opens it."
-                      : undefined
-                  }
                   className="flex flex-col gap-4"
                 >
                   {SETTINGS_NAV_GROUPS.map((group, index) => (

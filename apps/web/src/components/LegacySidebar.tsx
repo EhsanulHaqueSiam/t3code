@@ -1,4 +1,4 @@
-import { useSidebarTree } from "../hooks/useSidebarTree";
+import { attachSidebarTree, SIDEBAR_TREE_PROPS } from "../lib/sidebarTree";
 import { useSupportsMultiplePullRequests } from "~/hooks/useSupportsMultiplePullRequests";
 import { resolveThreadCurrentPullRequestLink } from "@t3tools/client-runtime/thread-pull-requests";
 import { Spinner } from "~/components/ui/spinner";
@@ -2903,7 +2903,6 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
     projectsLength,
   } = props;
 
-  const { ref: attachSidebarTree, ...sidebarTree } = useSidebarTree();
   const attachTreeRef = (node: HTMLUListElement | null) => {
     attachProjectListAutoAnimateRef(node);
     const dispose = attachSidebarTree(node);
@@ -3004,7 +3003,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
             onDragEnd={handleProjectDragEnd}
             onDragCancel={handleProjectDragCancel}
           >
-            <SidebarMenu {...sidebarTree} ref={attachSidebarTree}>
+            <SidebarMenu {...SIDEBAR_TREE_PROPS} ref={attachSidebarTree}>
               <SortableContext items={sortedProjectKeys} strategy={verticalListSortingStrategy}>
                 {sortedProjects.map((project) => (
                   <SortableProjectItem key={project.projectKey} projectId={project.projectKey}>
@@ -3040,7 +3039,7 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
             </SidebarMenu>
           </DndContext>
         ) : (
-          <SidebarMenu {...sidebarTree} ref={attachTreeRef}>
+          <SidebarMenu {...SIDEBAR_TREE_PROPS} ref={attachTreeRef}>
             {sortedProjects.map((project) => (
               <SidebarProjectListRow
                 key={project.projectKey}
