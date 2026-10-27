@@ -161,13 +161,13 @@ export const layer = Layer.effect(
       // Absorb window errors so readiness can reset restartAttempt.
       onReady: (httpBaseUrl) =>
         desktopWindow.handleBackendReady(httpBaseUrl).pipe(
+          // Only once the main window exists, so the recovery window never closes into nothing.
+          Effect.andThen(SubscriptionRef.set(primaryBackendStartup, { _tag: "Ready" })),
           Effect.catch((error) =>
             logBackendPoolWarning("failed to open main window after backend readiness", {
               error: error.message,
             }),
           ),
-          // After the main window exists, so closing the recovery window never leaves zero windows.
-          Effect.andThen(SubscriptionRef.set(primaryBackendStartup, { _tag: "Ready" })),
         ),
       onStartupFailure: (failure) =>
         SubscriptionRef.set(primaryBackendStartup, { _tag: "Failing", ...failure }),
