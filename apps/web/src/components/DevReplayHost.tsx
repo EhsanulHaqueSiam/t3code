@@ -95,6 +95,7 @@ export function DevReplayHost() {
       replay: (scenario) => replayFromConsole(scenario),
     };
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.repeat) return;
       if (event.ctrlKey && event.altKey && event.shiftKey && event.code === "KeyR") {
         event.preventDefault();
         setOpen((current) => !current);

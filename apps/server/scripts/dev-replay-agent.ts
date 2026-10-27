@@ -197,8 +197,12 @@ function runAgent(): void {
   const untilAbort = (promise: Promise<unknown>, signal: AbortSignal) =>
     new Promise<void>((resolve) => {
       if (signal.aborted) return resolve();
-      signal.addEventListener("abort", () => resolve(), { once: true });
-      void promise.then(() => resolve());
+      const onAbort = () => resolve();
+      signal.addEventListener("abort", onAbort, { once: true });
+      void promise.then(() => {
+        signal.removeEventListener("abort", onAbort);
+        resolve();
+      });
     });
   const sleep = (ms: number, signal: AbortSignal) =>
     untilAbort(
