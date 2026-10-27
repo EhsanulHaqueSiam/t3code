@@ -24,11 +24,11 @@ interface AgentMessage {
 
 /**
  * Runs the agent over stdio and returns every message it sent until each request is answered.
- * Permission requests get `permissionOptionId`.
+ * Permission requests get `permissionResult`.
  */
 async function talkToAgent(
   requests: ReadonlyArray<(sessionId: string) => object>,
-  permissionOptionId = "allow-once",
+  permissionResult: object = { outcome: { outcome: "selected", optionId: "allow-once" } },
 ) {
   const agent = NodeChildProcess.spawn(
     process.execPath,
@@ -47,8 +47,8 @@ async function talkToAgent(
         const message = JSON.parse((await lines.next()).value as string) as AgentMessage;
         received.push(message);
         if (message.method === "session/request_permission") {
-          const result = { outcome: { outcome: "selected", optionId: permissionOptionId } };
-          agent.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id: message.id, result })}\n`);
+          const answer = { jsonrpc: "2.0", id: message.id, result: permissionResult };
+          agent.stdin.write(`${JSON.stringify(answer)}\n`);
         }
         if (message.id !== index + 1 || message.method !== undefined) continue;
         sessionId = message.result?.sessionId ?? sessionId;
@@ -126,7 +126,7 @@ describe("dev replay agent", () => {
         () => ({ method: "session/new", params: { cwd: "/tmp" } }),
         (sessionId) => ({ method: "session/prompt", params: { sessionId } }),
       ],
-      "reject-once",
+      { outcome: { outcome: "selected", optionId: "reject-once" } },
     );
     const updates = received.flatMap((message) =>
       message.params?.update === undefined ? [] : [message.params.update],
@@ -134,6 +134,23 @@ describe("dev replay agent", () => {
     expect(updates.at(-1)).toMatchObject({ sessionUpdate: "tool_call_update", status: "failed" });
     expect(updates.some((update) => update.toolCallId?.endsWith("showcase-test"))).toBe(false);
     expect(received.at(-1)?.result?.stopReason).toBe("end_turn");
+  });
+
+  it("ends the turn as cancelled when the client cancels an open approval", async () => {
+    const { received } = await talkToAgent(
+      [
+        () => ({ method: "session/new", params: { cwd: "/tmp" } }),
+        (sessionId) => ({ method: "session/prompt", params: { sessionId } }),
+      ],
+      { outcome: { outcome: "cancelled" } },
+    );
+    const requestIndex = received.findIndex(
+      (message) => message.method === "session/request_permission",
+    );
+    expect(received.slice(requestIndex + 1).some((message) => message.method !== undefined)).toBe(
+      false,
+    );
+    expect(received.at(-1)?.result?.stopReason).toBe("cancelled");
   });
 
   it("leaves frames after a prompt's response out of that turn", () => {
