@@ -1,7 +1,7 @@
 ---
 title: Test Signal
-model: gpt-6-sol
-effort: max
+model: gpt-6-1-terra
+reasoning: low
 input: incremental
 tools:
   - browse_code
@@ -13,8 +13,8 @@ exclude:
   - ".repos/**"
 requires:
   - Check
-maxBudgetPerRun: 2
-maxBudgetPerPR: 10
+maxBudgetPerRun: 1
+maxBudgetPerPR: 5
 conclusion: neutral
 ---
 
