@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vite-plus/test";
+import { userEvent } from "vite-plus/test/browser";
 import { installSidebarTree } from "./sidebarTree";
 
 function setup() {
@@ -169,5 +170,26 @@ describe("sidebar keyboard navigation", () => {
     expect([firstAction.tabIndex, secondAction.tabIndex]).toEqual([0, 0]);
     tree.install();
     expect([firstAction.tabIndex, secondAction.tabIndex]).toEqual([-1, 0]);
+  });
+
+  it("does not pull focus back after a click outside the tree", async () => {
+    using tree = setup();
+    const first = tree.row("first");
+    tree.install();
+    const text = document.createElement("p");
+    text.textContent = "Chat text";
+    document.body.append(text);
+    using _text = { [Symbol.dispose]: () => text.remove() };
+    first.focus();
+    await userEvent.click(text);
+    expect(document.activeElement).toBe(document.body);
+    // A status change re-renders the tree while the user works elsewhere.
+    tree.row("second");
+    await vi.waitFor(() =>
+      expect(
+        tree.root.querySelector('[data-sidebar-row="second"]')?.getAttribute("aria-posinset"),
+      ).toBe("2"),
+    );
+    expect(document.activeElement).toBe(document.body);
   });
 });

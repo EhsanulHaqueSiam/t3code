@@ -118,6 +118,10 @@ export function installSidebarTree(root: HTMLElement) {
     if (ownsFocus && !selected && document.activeElement === document.body) root.focus();
   };
 
+  // Clicking non-focusable content drops focus to the body without a focusin event.
+  const onPointerDown = (event: PointerEvent) => {
+    if (!root.contains(event.target as Node)) ownsFocus = false;
+  };
   const onFocus = (event: FocusEvent) => {
     ownsFocus = root.contains(event.target as Node);
     if (!ownsFocus || !(event.target instanceof HTMLElement) || !event.target.matches(ROW)) return;
@@ -237,6 +241,7 @@ export function installSidebarTree(root: HTMLElement) {
     ],
   });
   document.addEventListener("focusin", onFocus);
+  document.addEventListener("pointerdown", onPointerDown, true);
   root.addEventListener("keydown", onKeyDown, true);
   root.addEventListener("keyup", onKeyUp, true);
   return () => {
@@ -244,6 +249,7 @@ export function installSidebarTree(root: HTMLElement) {
     // A later install reads these as the controls' own tab indexes.
     for (const [control, tabIndex] of ownTabIndex) setTabIndex(control, tabIndex);
     document.removeEventListener("focusin", onFocus);
+    document.removeEventListener("pointerdown", onPointerDown, true);
     root.removeEventListener("keydown", onKeyDown, true);
     root.removeEventListener("keyup", onKeyUp, true);
   };
