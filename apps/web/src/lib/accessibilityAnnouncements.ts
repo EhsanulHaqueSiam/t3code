@@ -1,6 +1,7 @@
 /** Alternating atomic live regions allow repeated user actions to be announced, as in VS Code aria.ts. */
 export function announceSidebarVisibility(open: boolean) {
   let container = document.getElementById("workspace-visibility-alerts");
+  const created = !container;
   if (!container) {
     container = document.createElement("div");
     container.id = "workspace-visibility-alerts";
@@ -14,8 +15,13 @@ export function announceSidebarVisibility(open: boolean) {
     document.body.append(container);
   }
   const [first, second] = Array.from(container.children);
-  const next = first!.textContent ? second! : first!;
-  first!.textContent = "";
-  second!.textContent = "";
-  next.textContent = `Sidebar ${open ? "shown" : "hidden"}`;
+  const write = () => {
+    const next = first!.textContent ? second! : first!;
+    first!.textContent = "";
+    second!.textContent = "";
+    next.textContent = `Sidebar ${open ? "shown" : "hidden"}`;
+  };
+  // Screen readers ignore text written in the same task that inserts its live region.
+  if (created) setTimeout(write, 100);
+  else write();
 }

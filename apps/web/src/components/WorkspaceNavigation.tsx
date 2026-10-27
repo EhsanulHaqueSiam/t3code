@@ -1,7 +1,7 @@
 import { useEffect, useEffectEvent } from "react";
 import { useAtomValue } from "@effect/atom-react";
 import { primaryServerKeybindingsAtom } from "../state/server";
-import { resolveShortcutCommand } from "../keybindings";
+import { resolveShortcutCommand, type ShortcutMatchContext } from "../keybindings";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import { isPreviewFocused } from "../lib/previewFocus";
 import { isEditableFocused } from "../lib/editableFocus";
@@ -39,11 +39,17 @@ export function useWorkspacePageFocus(area: string, selector?: string) {
   }, [area, selector]);
 }
 
-export function WorkspaceNavigation() {
+/** `readPanelContext` supplies route state for `terminalOpen` / `previewOpen` when-clauses. */
+export function WorkspaceNavigation({
+  readPanelContext,
+}: {
+  readPanelContext: () => Partial<ShortcutMatchContext>;
+}) {
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const resolveCommand = useEffectEvent((event: KeyboardEvent) =>
     resolveShortcutCommand(event, keybindings, {
       context: {
+        ...readPanelContext(),
         terminalFocus: isTerminalFocused(),
         previewFocus: isPreviewFocused(),
         editableFocus: isEditableFocused(event.target),
