@@ -1,6 +1,7 @@
 // @effect-diagnostics globalDate:off -- Tests exercise local calendar snooze boundaries.
 import { ThreadId } from "@t3tools/contracts";
 import { TurnId } from "@t3tools/contracts";
+import type { SnoozePresetSetting } from "@t3tools/contracts/settings";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -273,25 +274,46 @@ describe("threadWokeAt", () => {
 });
 
 describe("resolveSnoozePresets", () => {
-  it("drops the evening choice once evening is near or past", () => {
-    expect(resolveSnoozePresets(localDate(2026, 4, 8, 17, 30)).map((preset) => preset.id)).toEqual([
-      "hour",
-      "three-hours",
-      "tomorrow",
-      "next-week",
-    ]);
+  const formatTime = (date: Date) =>
+    `${date.getHours()}:${String(date.getMinutes()).padStart(2, "0")}`;
+  const menu = (now: Date, presets?: ReadonlyArray<SnoozePresetSetting>) =>
+    resolveSnoozePresets(now, { formatTime, ...(presets ? { presets } : {}) }).map(
+      (preset) => `${preset.label} ${preset.whenLabel}`,
+    );
+
+  it("lists custom presets soonest first and names the day when the label does not", () => {
+    // Wednesday 20:00.
+    expect(
+      menu(localDate(2026, 4, 8, 20), [
+        { kind: "at", day: "monday", time: "18:00" },
+        { kind: "at", day: "tomorrow", time: "21:00" },
+        { kind: "after", minutes: 360 },
+        { kind: "after", minutes: 180 },
+      ]),
+    ).toEqual(["In 3 hours 23:00", "In 6 hours Thu 2:00", "Tomorrow 21:00", "Next week Mon 18:00"]);
   });
 
-  it("drops next week on Sundays, when it lands on the same Monday as tomorrow", () => {
-    const presets = resolveSnoozePresets(localDate(2026, 8, 30, 7, 1));
-    expect(presets.map((preset) => preset.id)).toEqual([
-      "hour",
-      "three-hours",
-      "evening",
-      "tomorrow",
+  it("drops a today preset once its time passes and moves a weekday on that day to next week", () => {
+    // Monday 18:30.
+    const now = localDate(2026, 4, 13, 18, 30);
+    const presets = resolveSnoozePresets(now, {
+      presets: [
+        { kind: "at", day: "today", time: "18:00" },
+        { kind: "at", day: "monday", time: "09:00" },
+      ],
+    });
+    expect(presets.map((preset) => preset.id)).toEqual(["at:monday:09:00"]);
+    expect(new Date(presets[0]!.snoozedUntil)).toEqual(localDate(2026, 4, 20, 9));
+  });
+
+  it("shows one row when two presets wake at the same time", () => {
+    // Sunday, so Tomorrow 9:00 and Next week 9:00 are the same Monday.
+    expect(menu(localDate(2026, 8, 30, 7, 1))).toEqual([
+      "In 1 hour 8:01",
+      "In 3 hours 10:01",
+      "This evening 18:00",
+      "Tomorrow 9:00",
     ]);
-    const tomorrow = new Date(presets.find((preset) => preset.id === "tomorrow")!.snoozedUntil);
-    expect(tomorrow.getDay()).toBe(1);
   });
 });
 

@@ -129,7 +129,7 @@ export function useThreadActionMenu(input: {
         titleRegeneration: readEnvironmentSupportsTitleRegeneration(threadRef.environmentId),
       };
       const isRegeneratingTitle = thread.titleRegeneration != null;
-      const snoozePresets = resolveSnoozePresets(now, timestampFormat);
+      const snoozePresets = resolveSnoozePresets(now, timestampFormat, threadRef.environmentId);
       const items = buildThreadActionMenuItems({
         canOperate: readEnvironmentScope(threadRef.environmentId, AuthOrchestrationOperateScope),
         branch: thread.branch ?? null,

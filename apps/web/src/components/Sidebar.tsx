@@ -2123,8 +2123,14 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       const unpinMenuItem = buildBulkUnpinContextMenuItem({
         pinnedCount: pinnedSelectedThreads.length,
       });
+      // Presets sync across environments, so the first selected thread's stand for all.
       // oxlint-disable-next-line react/purity -- runs in an event handler (oxc#27309)
-      const snoozePresets = resolveSnoozePresets(new Date(), timestampFormat);
+      const menuOpenedAt = new Date();
+      const snoozePresets = resolveSnoozePresets(
+        menuOpenedAt,
+        timestampFormat,
+        selectedThreads[0]!.environmentId,
+      );
       const clicked = await settlePromise(() =>
         api.contextMenu.show(
           [
@@ -2416,7 +2422,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         const isSettled = settledThreadKeysRef.current.has(threadKey);
         const isSnoozed = snoozedThreadKeysRef.current.has(threadKey);
         const isPinned = thread.pinnedAt != null;
-        const snoozePresets = resolveSnoozePresets(new Date(), timestampFormat);
+        const snoozePresets = resolveSnoozePresets(
+          new Date(),
+          timestampFormat,
+          thread.environmentId,
+        );
         const threadProjectGroup =
           projectGroupsRef.current.find((project) =>
             project.memberProjectRefs.some(
