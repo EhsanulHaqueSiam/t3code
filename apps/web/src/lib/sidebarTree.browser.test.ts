@@ -128,18 +128,32 @@ describe("sidebar keyboard navigation", () => {
     action.textContent = "Snooze";
     action.dataset.sidebarActionFor = "thread";
     tree.root.append(action);
-    const menu = document.createElement("button");
-    menu.textContent = "1 hour";
-    document.body.append(menu);
-    using _menu = { [Symbol.dispose]: () => menu.remove() };
+    const menu = document.createElement("div");
+    menu.setAttribute("role", "menu");
+    const item = document.createElement("button");
+    item.textContent = "1 hour";
+    menu.append(item);
+    const outside = document.createElement("button");
+    outside.textContent = "Outside";
+    document.body.append(menu, outside);
+    using _menu = {
+      [Symbol.dispose]: () => {
+        menu.remove();
+        outside.remove();
+      },
+    };
     tree.install();
     owner.focus();
     press(owner, "F2");
-    menu.focus();
+    item.focus();
     action.focus();
     expect(action.tabIndex).toBe(0);
     press(action, "Escape");
     expect(document.activeElement).toBe(owner);
+    // Tabbing out of the tree instead restores the single Tab stop.
+    press(owner, "F2");
+    outside.focus();
+    expect(action.tabIndex).toBe(-1);
   });
 
   it("skips disabled rows and leaves controls outside rows in the Tab order", () => {

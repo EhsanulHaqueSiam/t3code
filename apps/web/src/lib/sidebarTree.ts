@@ -103,8 +103,12 @@ export function installSidebarTree(root: HTMLElement) {
 
   const onFocus = (event: FocusEvent) => {
     ownsFocus = root.contains(event.target as Node);
-    // A row action can open a portalled menu; keep the actions until focus returns to a row.
-    if (ownsFocus && event.target instanceof HTMLElement && event.target.matches(ROW))
+    // A row action can open a portalled menu; keep the actions while focus is in one.
+    if (
+      !(event.target instanceof HTMLElement) ||
+      (!rowActions.includes(event.target) &&
+        !event.target.closest('[role="menu"], [role="listbox"], [data-slot$="-popup"]'))
+    )
       leaveActions();
     if (!ownsFocus || !(event.target instanceof HTMLElement) || !event.target.matches(ROW)) return;
     setTabStop(event.target);

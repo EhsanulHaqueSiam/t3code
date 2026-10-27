@@ -153,9 +153,7 @@ function createSidebarOpenStore(defaultOpen: boolean) {
     void persistSidebarOpen(open);
   };
   const setOpenMobile = (openMobile: boolean) => {
-    if (openMobile === state.openMobile) return;
-    if (isMobileViewport()) announceSidebarVisibility(openMobile);
-    publish({ ...state, openMobile });
+    if (openMobile !== state.openMobile) publish({ ...state, openMobile });
   };
   return {
     subscribe: (listener: () => void) => {

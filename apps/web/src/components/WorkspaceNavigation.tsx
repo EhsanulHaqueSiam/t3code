@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useEffectEvent } from "react";
 import { useAtomValue } from "@effect/atom-react";
 import { primaryServerKeybindingsAtom } from "../state/server";
 import { resolveShortcutCommand } from "../keybindings";
@@ -41,6 +41,15 @@ export function useWorkspacePageFocus(area: string, selector?: string) {
 
 export function WorkspaceNavigation() {
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
+  const resolveCommand = useEffectEvent((event: KeyboardEvent) =>
+    resolveShortcutCommand(event, keybindings, {
+      context: {
+        terminalFocus: isTerminalFocused(),
+        previewFocus: isPreviewFocused(),
+        editableFocus: isEditableFocused(event.target),
+      },
+    }),
+  );
   // oxlint-disable-next-line t3code/react-effect-budget -- Area navigation listens to window keys, focus requests, and the desktop menu bridge.
   useEffect(() => {
     const controller = createWorkspaceFocusController(document);
@@ -89,13 +98,7 @@ export function WorkspaceNavigation() {
         (event.target instanceof Element && event.target.closest("[data-keybinding-capture]"))
       )
         return;
-      const command = resolveShortcutCommand(event, keybindings, {
-        context: {
-          terminalFocus: isTerminalFocused(),
-          previewFocus: isPreviewFocused(),
-          editableFocus: isEditableFocused(event.target),
-        },
-      });
+      const command = resolveCommand(event);
       if (command !== "workspace.focusNext" && command !== "workspace.focusPrevious") return;
       // Consume the chord even inside dialogs, where the controller deliberately does not move.
       event.preventDefault();
@@ -127,6 +130,6 @@ export function WorkspaceNavigation() {
       window.removeEventListener("pointerdown", onUserInput, true);
       window.removeEventListener("keydown", onUserInput, true);
     };
-  }, [keybindings]);
+  }, []);
   return null;
 }

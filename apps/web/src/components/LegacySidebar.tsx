@@ -1644,7 +1644,8 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
 
   const handleProjectButtonContextMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
-    suppressProjectClickForContextMenuRef.current = true;
+    // Keyboard menus dispatch an untrusted contextmenu with no click after it.
+    suppressProjectClickForContextMenuRef.current = event.isTrusted;
     void (async () => {
       const api = readLocalApi();
       if (!api) return;
