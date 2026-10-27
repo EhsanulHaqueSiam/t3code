@@ -53,7 +53,9 @@ const git = (args: ReadonlyArray<string>) => {
 const world = (entry: Case) => {
   const files = new Map<string, string>();
   if (entry.type === "real") {
-    const diff = git(["diff", `${entry.rev}~1`, entry.rev, "--", ...entry.paths]) ?? "";
+    const diff = git(["diff", `${entry.rev}~1`, entry.rev, "--", ...entry.paths]);
+    // An empty diff would grade a guard case as a clean pass.
+    if (!diff) throw new Error(`${entry.id}: no diff at ${entry.rev}.`);
     return { diff, files };
   }
   const before = git(["show", `${entry.rev}:${entry.path}`]);
@@ -82,6 +84,27 @@ const readAt = (entry: Case, files: Map<string, string>, path: string) =>
   ruleFiles.has(path)
     ? NodeFS.readFileSync(NodePath.join(repo, path), "utf8")
     : (files.get(path) ?? git(["show", `${entry.rev}:${path}`]));
+
+/** `git grep` at `rev`, with overlay and rule files searched in their served form instead. */
+const grepAt = (entry: Case, files: Map<string, string>, pattern: string, scope: string) => {
+  const served = new Map(files);
+  for (const path of ruleFiles) served.set(path, readAt(entry, files, path) ?? "");
+  const inScope = (path: string) => scope === "" || scope === "." || path.startsWith(scope);
+  const fromRev = (git(["grep", "-n", "-E", pattern, entry.rev, "--", scope || "."]) ?? "")
+    .split("\n")
+    .filter((line) => line !== "")
+    .map((line) => line.replace(`${entry.rev}:`, ""))
+    .filter((line) => !served.has(line.slice(0, line.indexOf(":"))));
+  const regex = new RegExp(pattern);
+  const fromServed = [...served]
+    .filter(([path]) => inScope(path))
+    .flatMap(([path, text]) =>
+      text
+        .split("\n")
+        .flatMap((line, index) => (regex.test(line) ? [`${path}:${index + 1}:${line}`] : [])),
+    );
+  return [...fromServed, ...fromRev].slice(0, 80).join("\n") || "No matches.";
+};
 
 const tools = [
   {
@@ -216,18 +239,7 @@ const runSample = Effect.fn("evaluateTestSignal.sample")(function* (entry: Case,
                 .map((line, index) => `${start + index}: ${line}`)
                 .join("\n");
       } else {
-        const found = git([
-          "grep",
-          "-n",
-          "-E",
-          String(args.pattern),
-          entry.rev,
-          "--",
-          String(args.path ?? "."),
-        ]);
-        output =
-          found?.split("\n").slice(0, 80).join("\n").replaceAll(`${entry.rev}:`, "") ||
-          "No matches.";
+        output = grepAt(entry, files, String(args.pattern), String(args.path ?? ""));
       }
       input.push({ type: "function_call_output", call_id: call.call_id, output });
     }
