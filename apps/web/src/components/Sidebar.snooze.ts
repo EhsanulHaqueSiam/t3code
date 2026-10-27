@@ -26,3 +26,22 @@ export function resolveSnoozePresets(
     formatTime: (date) => formatShortTimestamp(date.toISOString(), timestampFormat),
   });
 }
+
+/**
+ * A menu choice re-resolved when picked, so a duration starts at selection rather than when the
+ * menu opened. Falls back to the shown time while it is still ahead.
+ */
+export function pickSnoozePreset(
+  shown: ReadonlyArray<SnoozePreset>,
+  id: string,
+  timestampFormat: TimestampFormat,
+  environmentId: EnvironmentId,
+): SnoozePreset | undefined {
+  const now = new Date();
+  const fresh = resolveSnoozePresets(now, timestampFormat, environmentId).find(
+    (preset) => preset.id === id,
+  );
+  if (fresh) return fresh;
+  const original = shown.find((preset) => preset.id === id);
+  return original && Date.parse(original.snoozedUntil) > now.getTime() ? original : undefined;
+}

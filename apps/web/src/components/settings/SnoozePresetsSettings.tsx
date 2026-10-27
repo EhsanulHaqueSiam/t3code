@@ -16,6 +16,7 @@ import * as Schema from "effect/Schema";
 import { PlusIcon, XIcon } from "lucide-react";
 
 import { useNowMinute } from "../../hooks/useNowMinute";
+import { reconcileSnoozeDraft } from "./SnoozePresetsSettings.logic";
 import { formatShortTimestamp } from "../../timestampFormat";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -123,20 +124,20 @@ export function SnoozePresetsRow() {
   };
   if (!Equal.equals(savedSource, saved)) {
     setSavedSource(saved);
-    // An echo acknowledges that write and every earlier one; anything else came from elsewhere.
-    const acknowledged = written.findIndex((snapshot) => Equal.equals(snapshot, saved));
-    if (acknowledged === -1) {
+    const reconciled = reconcileSnoozeDraft(written, saved);
+    if (reconciled.adopt) {
       setWritten([]);
       setPresets(saved);
       setKeys(freshKeys(saved.length));
     } else {
-      setWritten(written.slice(acknowledged + 1));
+      setWritten(reconciled.pending);
     }
   }
   const save = (
     snoozePresets: ReadonlyArray<SnoozePresetSetting>,
     nextKeys: ReadonlyArray<number> = keys,
   ) => {
+    if (Equal.equals(snoozePresets, presets)) return;
     setPresets(snoozePresets);
     setKeys(nextKeys);
     setWritten((previous) => [...previous, snoozePresets]);
@@ -375,9 +376,12 @@ function DurationFields(props: { minutes: number; onChange: (minutes: number) =>
           <NumberFieldDecrement aria-label="Decrease" />
           <NumberFieldInput
             aria-label="Amount"
-            // Base UI commits on blur but not on Enter.
+            // Base UI commits on blur but not on Enter; refocus so keyboard users stay put.
             onKeyDown={(event) => {
-              if (event.key === "Enter") event.currentTarget.blur();
+              if (event.key !== "Enter") return;
+              const input = event.currentTarget;
+              input.blur();
+              input.focus();
             }}
           />
           <NumberFieldIncrement aria-label="Increase" />
