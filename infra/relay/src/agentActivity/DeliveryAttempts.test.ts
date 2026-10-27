@@ -168,4 +168,48 @@ describe("DeliveryAttempts", () => {
       ),
     );
   });
+
+  const pruneWith = (batches: ReadonlyArray<number>) => {
+    const deleteCalls: number[] = [];
+    const fakeDb = {
+      select: () => ({ from: () => ({ where: () => ({ limit: () => ({}) }) }) }),
+      delete: () => ({
+        where: () => ({
+          returning: () => {
+            const size = batches[deleteCalls.length] ?? 0;
+            deleteCalls.push(size);
+            return Effect.succeed(Array.from({ length: size }, (_, index) => ({ id: `${index}` })));
+          },
+        }),
+      }),
+    } as unknown as RelayDb.RelayDb["Service"];
+    const run = DeliveryAttempts.DeliveryAttempts.pipe(
+      Effect.flatMap((attempts) => attempts.pruneExpired),
+      Effect.provide(
+        DeliveryAttempts.layer.pipe(
+          Layer.provide(NodeCryptoLayer.layer),
+          Layer.provide(Layer.succeed(RelayDb.RelayDb, fakeDb)),
+        ),
+      ),
+    );
+    return { run, deleteCalls };
+  };
+
+  it.effect("stops pruning once a batch comes back short", () => {
+    const full = DeliveryAttempts.DELIVERY_ATTEMPT_PRUNE_BATCH_SIZE;
+    const { run, deleteCalls } = pruneWith([full, 12]);
+    return Effect.gen(function* () {
+      expect(yield* run).toBe(full + 12);
+      expect(deleteCalls).toEqual([full, 12]);
+    });
+  });
+
+  it.effect("caps each run at the batch limit while a backlog remains", () => {
+    const full = DeliveryAttempts.DELIVERY_ATTEMPT_PRUNE_BATCH_SIZE;
+    const { run, deleteCalls } = pruneWith(Array.from({ length: 10 }, () => full));
+    return Effect.gen(function* () {
+      expect(yield* run).toBe(full * DeliveryAttempts.DELIVERY_ATTEMPT_PRUNE_MAX_BATCHES);
+      expect(deleteCalls).toHaveLength(DeliveryAttempts.DELIVERY_ATTEMPT_PRUNE_MAX_BATCHES);
+    });
+  });
 });
