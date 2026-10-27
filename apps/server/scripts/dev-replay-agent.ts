@@ -206,7 +206,11 @@ function runAgent(): void {
       signal,
     );
 
-  const playTurn = async (sessionId: string, turn: ReplayTurn, signal: AbortSignal) => {
+  const playTurn = async (
+    sessionId: string,
+    turn: ReplayTurn,
+    signal: AbortSignal,
+  ): Promise<"cancelled" | undefined> => {
     const session = sessions.get(sessionId)!;
     // Random, so a session loaded after a restart cannot reuse earlier tool rows.
     const live = { sessionId, workspace: session.cwd, turnKey: NodeCrypto.randomUUID() };
@@ -223,7 +227,9 @@ function runAgent(): void {
         send({ id, method: frame.method, params: frame.params as Record<string, unknown> });
         await untilAbort(response, signal);
         pendingAgentRequests.delete(String(id));
-        if (signal.aborted) return;
+        // The client answers "cancelled" when the user stops the turn mid-request.
+        const outcome = (answer as { outcome?: { outcome?: string } } | undefined)?.outcome;
+        if (signal.aborted || outcome?.outcome === "cancelled") return "cancelled";
         const toolCallId = permissionRejectedToolCallId(frame, answer);
         if (toolCallId === undefined) continue;
         // The recording only has the approved path, so a rejection ends the turn here.
@@ -315,13 +321,17 @@ function runAgent(): void {
         session.promptCount += 1;
         const controller = new AbortController();
         session.cancel = () => controller.abort();
+        let ended: "cancelled" | undefined;
         try {
-          if (turn !== undefined) await playTurn(sessionId, turn, controller.signal);
+          if (turn !== undefined) ended = await playTurn(sessionId, turn, controller.signal);
         } finally {
           session.cancel = undefined;
         }
         return {
-          stopReason: controller.signal.aborted ? "cancelled" : (turn?.stopReason ?? "end_turn"),
+          stopReason:
+            controller.signal.aborted || ended === "cancelled"
+              ? "cancelled"
+              : (turn?.stopReason ?? "end_turn"),
         };
       }
       case "session/close":

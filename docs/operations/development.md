@@ -80,6 +80,7 @@ different preference when needed.
 ACP transcripts with simulated streaming, so the real adapter, orchestration, and UI run
 without a paid model. Each scenario is a model, and each prompt plays the next recorded turn.
 Bundled servers, including desktop dev, skip it because they have no agent script.
+Dev servers add it back on start, so turn it off in Settings instead of removing it.
 To add a scenario, point a `SCENARIOS` entry at a generic ACP replay fixture
 (`registry_transcript.ndjson`) or a file in [dev-replay](../../apps/server/scripts/dev-replay).
 The agent replays session updates, permission requests, and questions. It drops session setup
