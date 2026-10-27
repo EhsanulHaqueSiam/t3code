@@ -90,19 +90,24 @@ const readAt = (entry: Case, files: Map<string, string>, path: string) =>
 const grepAt = (entry: Case, files: Map<string, string>, pattern: string, scope: string) => {
   const served = new Map(files);
   for (const path of ruleFiles) served.set(path, readAt(entry, files, path) ?? "");
-  const inScope = (path: string) => scope === "" || scope === "." || path.startsWith(scope);
+  // Match scopes and patterns the way `git grep` does: pathspec globs and POSIX EREs.
+  const inScope = (path: string) =>
+    scope === "" || scope === "." || path.startsWith(scope) || NodePath.matchesGlob(path, scope);
   const fromRev = (git(["grep", "-n", "-E", pattern, entry.rev, "--", scope || "."]) ?? "")
     .split("\n")
     .filter((line) => line !== "")
     .map((line) => line.replace(`${entry.rev}:`, ""))
     .filter((line) => !served.has(line.slice(0, line.indexOf(":"))));
-  const regex = new RegExp(pattern);
   const fromServed = [...served]
     .filter(([path]) => inScope(path))
     .flatMap(([path, text]) =>
-      text
-        .split("\n")
-        .flatMap((line, index) => (regex.test(line) ? [`${path}:${index + 1}:${line}`] : [])),
+      NodeChildProcess.spawnSync("grep", ["-n", "-E", "--", pattern], {
+        input: text,
+        encoding: "utf8",
+      })
+        .stdout.split("\n")
+        .filter((line) => line !== "")
+        .map((line) => `${path}:${line}`),
     );
   return [...fromServed, ...fromRev].slice(0, 80).join("\n") || "No matches.";
 };
