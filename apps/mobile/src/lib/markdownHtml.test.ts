@@ -75,6 +75,15 @@ describe("HTML in native Markdown", () => {
     expect(result).toContain('`<img src="inline.png">`');
   });
 
+  it("treats an unclosed fence in an HTML block as code through the end", () => {
+    const fences = Array.from({ length: 5000 }, () => "```x y").join("\n");
+    const markdown = `<details>\n<img src="before.png">\n${fences}\n<img src="after.png">\n</details>`;
+    const result = markdownHtmlContent(markdown);
+    expect(result).toContain("![](<before.png>)");
+    expect(result).not.toContain("<details>");
+    expect(result).toContain('<img src="after.png">\n</details>');
+  });
+
   it("links HTML anchors in a table cell without breaking the row at <br>", () => {
     const document = parseMarkdownDocument(
       "| Status | Preview URL |\n| - | - |\n| Done | <a href='https://commit.example.com'>Commit</a><br><a href='https://branch.example.com'>Branch</a> |",
