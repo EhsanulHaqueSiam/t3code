@@ -4,6 +4,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import { and, eq, inArray, isNull, lt } from "drizzle-orm";
+import { QueryBuilder } from "drizzle-orm/pg-core";
 import * as Crypto from "effect/Crypto";
 import * as Schema from "effect/Schema";
 
@@ -269,7 +270,8 @@ export const make = Effect.gen(function* () {
           .where(
             inArray(
               relayDeliveryAttempts.id,
-              db
+              // The Worker's db is a proxy whose builders render as nothing inside another query.
+              new QueryBuilder()
                 .select({ id: relayDeliveryAttempts.id })
                 .from(relayDeliveryAttempts)
                 .where(lt(relayDeliveryAttempts.createdAt, before))

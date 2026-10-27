@@ -1,7 +1,9 @@
 import * as NodeCryptoLayer from "@effect/platform-node/NodeCrypto";
 import { describe, expect, it } from "@effect/vitest";
+import * as Drizzle from "@alchemy.run/drizzle/Postgres";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Redacted from "effect/Redacted";
 
 import * as RelayDb from "../db.ts";
 import * as DeliveryAttempts from "./DeliveryAttempts.ts";
@@ -172,7 +174,6 @@ describe("DeliveryAttempts", () => {
   const pruneWith = (batches: ReadonlyArray<number>) => {
     const deleteCalls: number[] = [];
     const fakeDb = {
-      select: () => ({ from: () => ({ where: () => ({ limit: () => ({}) }) }) }),
       delete: () => ({
         where: () => ({
           returning: () => {
@@ -212,4 +213,28 @@ describe("DeliveryAttempts", () => {
       expect(deleteCalls).toHaveLength(DeliveryAttempts.DELIVERY_ATTEMPT_PRUNE_MAX_BATCHES);
     });
   });
+
+  // The Worker's db is Alchemy's proxyChain, whose builders render as nothing inside another
+  // query. Nothing listens on the port; the failed query still reports the SQL it sent.
+  it.live("prunes with a subquery the Worker's proxied database can render", () =>
+    Effect.gen(function* () {
+      const db = yield* Drizzle.Postgres(
+        Effect.succeed(Redacted.make("postgres://relay:relay@127.0.0.1:1/relay")),
+        { client: { prepare: false } },
+      );
+      const error = yield* DeliveryAttempts.DeliveryAttempts.pipe(
+        Effect.flatMap((attempts) => attempts.pruneExpired),
+        Effect.provide(
+          DeliveryAttempts.layer.pipe(
+            Layer.provide(NodeCryptoLayer.layer),
+            Layer.provide(Layer.succeed(RelayDb.RelayDb, db)),
+          ),
+        ),
+        Effect.flip,
+      );
+      expect((error.cause as { readonly query: string }).query).toMatch(
+        /"relay_delivery_attempts"\."id" in \(select "id" from "relay_delivery_attempts" where "relay_delivery_attempts"\."created_at" < \$1 limit \$2\)/,
+      );
+    }).pipe(Effect.scoped),
+  );
 });
