@@ -263,8 +263,8 @@ access to the environment and is not available on Windows.
 To change the choices in the snooze menu, open **Settings → Threads → Snooze options**.
 Each option is a duration, such as 3 hours, or a time on a day, such as 9:00 PM
 tomorrow. A weekday means the next one after today. Menus list the options soonest
-first and hide a today option after its time passes. The options apply to every
-environment you are connected to, including the mobile app.
+first and hide a today option after its time passes. Saved with **All environments**
+selected, the options apply to every connected environment, including in the mobile app.
 
 Choose **Snooze → Custom…** from a thread's menu to pick a date and time in your
 local time zone, or a duration in minutes, hours, or days. Durations start when

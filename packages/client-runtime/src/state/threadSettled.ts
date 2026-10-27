@@ -281,22 +281,23 @@ export function resolveSnoozePreset(
   };
 }
 
-/** The snooze menu: soonest first, one row per wake time. */
+/** The snooze menu: soonest first, one row per wake minute. */
 export function resolveSnoozePresets(
   now: Date,
   options: SnoozePresetOptions = {},
 ): ReadonlyArray<SnoozePreset> {
+  // By minute, so a duration (which keeps the clock's seconds) and a set time in the same
+  // minute tie, and the stable sort keeps whichever comes first in settings.
+  const wakeMinute = (preset: SnoozePreset) => Math.floor(Date.parse(preset.snoozedUntil) / 60_000);
   const seen = new Set<number>();
   return (
     (options.presets ?? DEFAULT_SNOOZE_PRESETS)
       .flatMap((setting) => resolveSnoozePreset(setting, now, options.formatTime) ?? [])
       // flatMap returned a new array; Hermes has no `toSorted`.
-      .sort((a, b) => Date.parse(a.snoozedUntil) - Date.parse(b.snoozedUntil))
+      .sort((a, b) => wakeMinute(a) - wakeMinute(b))
       .filter((preset) => {
-        // By minute: a duration keeps the clock's seconds, a set time does not.
-        const wakeMinute = Math.floor(Date.parse(preset.snoozedUntil) / 60_000);
-        if (seen.has(wakeMinute)) return false;
-        seen.add(wakeMinute);
+        if (seen.has(wakeMinute(preset))) return false;
+        seen.add(wakeMinute(preset));
         return true;
       })
   );

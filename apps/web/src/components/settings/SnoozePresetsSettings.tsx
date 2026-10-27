@@ -87,10 +87,21 @@ function nextCandidate(presets: ReadonlyArray<SnoozePresetSetting>): SnoozePrese
 
 const isSnoozePresetDay = Schema.is(SnoozePresetDay);
 
-function withWhen(preset: SnoozePresetSetting, when: string): SnoozePresetSetting | null {
-  if (when === "after") return preset.kind === "after" ? preset : { kind: "after", minutes: 60 };
+interface KindMemory {
+  readonly minutes: number;
+  readonly time: string;
+}
+
+function withWhen(
+  preset: SnoozePresetSetting,
+  when: string,
+  memory: KindMemory,
+): SnoozePresetSetting | null {
+  if (when === "after") {
+    return preset.kind === "after" ? preset : { kind: "after", minutes: memory.minutes };
+  }
   if (!isSnoozePresetDay(when)) return null;
-  return { kind: "at", day: when, time: preset.kind === "at" ? preset.time : "09:00" };
+  return { kind: "at", day: when, time: preset.kind === "at" ? preset.time : memory.time };
 }
 
 /** Edits the snooze menu's options. Menus sort them by wake time, so rows keep the order they were added in. */
@@ -112,9 +123,14 @@ export function SnoozePresetsRow() {
   };
   if (!Equal.equals(savedSource, saved)) {
     setSavedSource(saved);
-    if (!written.some((snapshot) => Equal.equals(snapshot, saved))) {
+    // An echo acknowledges that write and every earlier one; anything else came from elsewhere.
+    const acknowledged = written.findIndex((snapshot) => Equal.equals(snapshot, saved));
+    if (acknowledged === -1) {
+      setWritten([]);
       setPresets(saved);
       setKeys(freshKeys(saved.length));
+    } else {
+      setWritten(written.slice(acknowledged + 1));
     }
   }
   const save = (
@@ -123,7 +139,7 @@ export function SnoozePresetsRow() {
   ) => {
     setPresets(snoozePresets);
     setKeys(nextKeys);
-    setWritten((previous) => [...previous.slice(-7), snoozePresets]);
+    setWritten((previous) => [...previous, snoozePresets]);
     updateSettings({ snoozePresets });
   };
   const replaceAt = (index: number, next: SnoozePresetSetting) =>
@@ -182,15 +198,21 @@ function SnoozePresetList(props: {
       return { tone: "muted", text: "Duplicate of an option above" } as const;
     }
     if (seenWakes.has(resolved.snoozedUntil)) {
-      return { tone: "muted", text: "Same time as an option above today" } as const;
+      return { tone: "muted", text: "Same time as an option above" } as const;
     }
     seenIds.add(resolved.id);
     seenWakes.add(resolved.snoozedUntil);
     return { tone: "menu", label: resolved.label, when: resolved.whenLabel } as const;
   });
 
-  const menuOrder = resolveSnoozePresets(now, { presets: props.presets }).map(
-    (preset) => preset.label,
+  const menuPresets = resolveSnoozePresets(now, { presets: props.presets, formatTime });
+  const repeatedLabels = new Set(
+    menuPresets
+      .map((preset) => preset.label)
+      .filter((label, index, labels) => labels.indexOf(label) !== index),
+  );
+  const menuOrder = menuPresets.map((preset) =>
+    repeatedLabels.has(preset.label) ? `${preset.label} ${preset.whenLabel}` : preset.label,
   );
 
   return (
@@ -255,14 +277,25 @@ function SnoozePresetFields(props: {
 }) {
   const { preset, onChange } = props;
   const when = preset.kind === "after" ? "after" : preset.day;
+  // Switching between a duration and a set time keeps the other kind's last value, so a
+  // misclick on "When" can be undone without retyping it.
+  const [memory, setMemory] = useState<KindMemory>({ minutes: 60, time: "09:00" });
   return (
     <div className="flex items-center gap-2">
       <Select
         value={when}
         items={WHEN_LABELS}
         onValueChange={(value) => {
-          const next = value === null ? null : withWhen(preset, value);
-          if (next) onChange(next);
+          const next = value === null ? null : withWhen(preset, value, memory);
+          if (!next) return;
+          if (next.kind !== preset.kind) {
+            setMemory(
+              preset.kind === "after"
+                ? { ...memory, minutes: preset.minutes }
+                : { ...memory, time: preset.time },
+            );
+          }
+          onChange(next);
         }}
       >
         <SelectTrigger size="sm" className="w-32" aria-label="When">
@@ -313,9 +346,9 @@ function DurationFields(props: { minutes: number; onChange: (minutes: number) =>
   // Typing stays local until the field commits (blur, Enter, or a step), so half-typed
   // values never reach the server.
   const [draft, setDraft] = useState<number | null>(amount);
-  const [draftSource, setDraftSource] = useState(props.minutes);
-  if (draftSource !== props.minutes) {
-    setDraftSource(props.minutes);
+  const [draftSource, setDraftSource] = useState(`${props.minutes}:${unit}`);
+  if (draftSource !== `${props.minutes}:${unit}`) {
+    setDraftSource(`${props.minutes}:${unit}`);
     setDraft(amount);
   }
   return (
@@ -340,7 +373,13 @@ function DurationFields(props: { minutes: number; onChange: (minutes: number) =>
       >
         <NumberFieldGroup>
           <NumberFieldDecrement aria-label="Decrease" />
-          <NumberFieldInput aria-label="Amount" />
+          <NumberFieldInput
+            aria-label="Amount"
+            // Base UI commits on blur but not on Enter.
+            onKeyDown={(event) => {
+              if (event.key === "Enter") event.currentTarget.blur();
+            }}
+          />
           <NumberFieldIncrement aria-label="Increase" />
         </NumberFieldGroup>
       </NumberField>

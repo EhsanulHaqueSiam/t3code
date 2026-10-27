@@ -341,10 +341,10 @@ describe("resolveSnoozePresets", () => {
     now.setSeconds(25);
     expect(
       menu(now, [
-        { kind: "at", day: "today", time: "18:00" },
         { kind: "after", minutes: 180 },
+        { kind: "at", day: "today", time: "18:00" },
       ]),
-    ).toEqual(["This evening 18:00"]);
+    ).toEqual(["In 3 hours 18:00"]);
   });
 });
 
