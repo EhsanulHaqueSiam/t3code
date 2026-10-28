@@ -247,4 +247,14 @@ describe("workspace area focus", () => {
     header.append(moved);
     await vi.waitFor(() => expect(document.activeElement).toBe(moved));
   });
+
+  it("keeps moving while a hover popup without focus is open", () => {
+    using fixture = setup();
+    const composer = fixture.area("composer", 2);
+    const terminal = fixture.area("terminal", 4);
+    fixture.append('<div data-slot="popover-popup">New split terminal</div>');
+    composer.button.focus();
+    expect(fixture.controller.move(1)).toBe(true);
+    expect(document.activeElement).toBe(terminal.button);
+  });
 });

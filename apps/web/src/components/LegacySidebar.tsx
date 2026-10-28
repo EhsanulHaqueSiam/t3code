@@ -1423,9 +1423,12 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
   const handleProjectButtonClick = (event: React.MouseEvent<HTMLButtonElement>) => {
     if (suppressProjectClickForContextMenuRef.current) {
       suppressProjectClickForContextMenuRef.current = false;
-      event.preventDefault();
-      event.stopPropagation();
-      return;
+      // A keyboard-made click (detail 0) never follows a context menu.
+      if (event.detail !== 0) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
     }
     if (dragInProgressRef.current) {
       event.preventDefault();
@@ -1652,8 +1655,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
 
   const handleProjectButtonContextMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
-    // Keyboard menus dispatch an untrusted contextmenu with no click after it.
-    suppressProjectClickForContextMenuRef.current = event.isTrusted;
+    suppressProjectClickForContextMenuRef.current = true;
     void (async () => {
       const api = readLocalApi();
       if (!api) return;

@@ -209,16 +209,13 @@ export function createWorkspaceFocusController(doc: Document) {
       doc.querySelectorAll<HTMLElement>(FOCUS_BOUNDARY_SELECTOR),
     ).filter((boundary) => boundary !== appModal);
     if (activePopup && !activePopup.closest(AREA_SELECTOR)) boundaries.push(activePopup);
+    // A modal keeps focus wherever it is; any other popup only while it holds focus,
+    // so hover popups and notifications never swallow the key.
     if (
       boundaries.some(
         (boundary) =>
           !(closingPalette && boundary.closest("[data-command-palette]")) &&
-          // Base UI names notifications as non-modal dialogs, including anchored
-          // toast popups. Their presence must not block navigation elsewhere.
-          !(
-            boundary.matches('[aria-modal="false"]:is([role="dialog"], [role="alertdialog"])') &&
-            boundary.closest('[data-slot^="toast-viewport"]')
-          ) &&
+          (boundary.matches('[aria-modal="true"]') || boundary.contains(doc.activeElement)) &&
           isWorkspaceElementVisible(boundary),
       )
     )

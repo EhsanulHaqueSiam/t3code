@@ -3275,7 +3275,7 @@ export default function ChatView(props: ChatViewProps) {
             />
             <div
               {...conversationArea}
-              className="relative flex min-h-0 flex-1 flex-col bg-background outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+              className="relative flex min-h-0 flex-1 flex-col bg-background"
             >
               <ThreadTimeline
                 threadDetailRef={routeThreadDetailRef}
