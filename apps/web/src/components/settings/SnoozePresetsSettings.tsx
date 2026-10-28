@@ -30,7 +30,11 @@ import {
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { SettingResetButton, SettingsRow } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
-import { useScopedSettings, useUpdateScopedSettings } from "./useScopedSettings";
+import {
+  useScopedSettings,
+  useScopedSettingsMixed,
+  useUpdateScopedSettings,
+} from "./useScopedSettings";
 
 const UNIT_MINUTES = { minutes: 1, hours: 60, days: 24 * 60 } as const;
 type DurationUnit = keyof typeof UNIT_MINUTES;
@@ -116,7 +120,10 @@ export function SnoozePresetsRow() {
   // Row keys survive removals, so a row's in-progress field state stays with that row.
   const [keys, setKeys] = useState<ReadonlyArray<number>>(() => saved.map((_, index) => index));
   const [nextKey, setNextKey] = useState(saved.length);
-  const [savedSource, setSavedSource] = useState(saved);
+  // Null forces the next render to adopt the saved value, as after a failed write.
+  const [savedSource, setSavedSource] = useState<ReadonlyArray<SnoozePresetSetting> | null>(saved);
+  // Environments disagree, so equal-looking edits and Reset must still write to all of them.
+  const mixed = useScopedSettingsMixed(["snoozePresets"]);
   const [written, setWritten] = useState<ReadonlyArray<ReadonlyArray<SnoozePresetSetting>>>([]);
   const freshKeys = (count: number) => {
     setNextKey(nextKey + count);
@@ -137,11 +144,19 @@ export function SnoozePresetsRow() {
     snoozePresets: ReadonlyArray<SnoozePresetSetting>,
     nextKeys: ReadonlyArray<number> = keys,
   ) => {
-    if (Equal.equals(snoozePresets, presets)) return;
+    if (!mixed && Equal.equals(snoozePresets, presets)) return;
     setPresets(snoozePresets);
     setKeys(nextKeys);
     setWritten((previous) => [...previous, snoozePresets]);
-    updateSettings({ snoozePresets });
+    updateSettings(
+      { snoozePresets },
+      {
+        onFailed: () => {
+          setWritten([]);
+          setSavedSource(null);
+        },
+      },
+    );
   };
   const replaceAt = (index: number, next: SnoozePresetSetting) =>
     save(presets.map((preset, candidate) => (candidate === index ? next : preset)));
@@ -153,7 +168,7 @@ export function SnoozePresetsRow() {
       {...searchableSetting("snooze-options")}
       description="Choices in every snooze menu, listed soonest first. Weekdays mean the next one after today."
       resetAction={
-        Equal.equals(presets, DEFAULT_SNOOZE_PRESETS) ? null : (
+        !mixed && Equal.equals(presets, DEFAULT_SNOOZE_PRESETS) ? null : (
           <SettingResetButton
             label="snooze options"
             onClick={() => save(DEFAULT_SNOOZE_PRESETS, freshKeys(DEFAULT_SNOOZE_PRESETS.length))}
