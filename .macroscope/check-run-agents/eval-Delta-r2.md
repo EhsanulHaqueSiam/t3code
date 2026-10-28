@@ -1,7 +1,7 @@
 ---
-title: Effect Service Conventions
-model: gpt-6-sol
-effort: max
+title: Eval Delta 2
+model: gpt-6-1-terra
+reasoning: low
 input: incremental
 tools:
   - browse_code
@@ -12,8 +12,6 @@ include:
   - "infra/**/*.ts"
 exclude:
   - "**/*.test.ts"
-requires:
-  - Check
 maxBudgetPerRun: 5
 maxBudgetPerPR: 25
 conclusion: neutral
