@@ -1,10 +1,29 @@
+import type { AnyRouter } from "@tanstack/react-router";
 import { dismissContextMenu } from "../contextMenuFallback";
+import { useRightPanelStore } from "../rightPanelStore";
 
 const AREA_SELECTOR = "[data-workspace-area]";
 const FOCUS_BOUNDARY_SELECTOR =
   '[role="dialog"], [role="alertdialog"], [aria-modal="true"], dialog[open], [data-slot$="-popup"]:not([data-slot="tooltip-popup"]):not([role="tooltip"])';
 const FOCUSABLE_SELECTOR =
   'button:not(:disabled), a[href], input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [contenteditable="true"], [tabindex]';
+
+/** Props that make an element one stop in the F6 cycle; `order` sets its place in the cycle. */
+export function workspaceAreaProps(name: string, order: number, label: string) {
+  return {
+    "data-workspace-area": name,
+    "data-workspace-order": order,
+    "aria-label": label,
+    role: "region",
+    tabIndex: -1,
+  } as const;
+}
+
+export interface WorkspaceFocusTarget {
+  area: string;
+  selector?: string;
+  restore?: boolean;
+}
 
 function workspaceArea(element: Element): HTMLElement | null {
   const area = element.closest<HTMLElement>(AREA_SELECTOR);
@@ -13,7 +32,7 @@ function workspaceArea(element: Element): HTMLElement | null {
   return root instanceof ShadowRoot ? workspaceArea(root.host) : null;
 }
 
-export function isWorkspaceElementVisible(element: HTMLElement): boolean {
+function isWorkspaceElementVisible(element: HTMLElement): boolean {
   if (
     !element.isConnected ||
     element.closest(
@@ -222,22 +241,131 @@ export function createWorkspaceFocusController(doc: Document) {
     const area = areas[index]!;
     return focusArea(area);
   };
-  return { move, focus, dispose: () => doc.removeEventListener("focusin", remember) };
+
+  // Focus that drops to the body because its element was hidden, made inert, or removed
+  // returns to the same control when React remounted it, else to its area, else the content.
+  const recover = (event: FocusEvent) => {
+    const lost = event.target;
+    if (!(lost instanceof HTMLElement) || event.relatedTarget) return;
+    const areaName = workspaceArea(lost)?.dataset.workspaceArea;
+    const label = lost.getAttribute("aria-label");
+    requestAnimationFrame(() => {
+      if (doc.activeElement !== doc.body || !doc.hasFocus() || isWorkspaceElementVisible(lost))
+        return;
+      const remounted = Array.from(doc.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).find(
+        (element) =>
+          element.tagName === lost.tagName &&
+          ((lost.id && element.id === lost.id) ||
+            (label && element.getAttribute("aria-label") === label)) &&
+          isWorkspaceElementVisible(element),
+      );
+      if (remounted) remounted.focus({ preventScroll: true });
+      else if (!areaName || !focus(areaName)) focus("content");
+    });
+  };
+  doc.addEventListener("focusout", recover);
+
+  // A request names a destination React has not committed yet, so it retries as the
+  // DOM changes. User input cancels it, and it gives up after two seconds.
+  let pending: WorkspaceFocusTarget | undefined;
+  let frame = 0;
+  let deadline = 0;
+  let cancelOnInput = false;
+  const observer = new MutationObserver(() => schedule());
+  const cancelRequest = () => {
+    pending = undefined;
+    cancelOnInput = false;
+    observer.disconnect();
+    cancelAnimationFrame(frame);
+    clearTimeout(deadline);
+  };
+  const schedule = () => {
+    cancelAnimationFrame(frame);
+    frame = requestAnimationFrame(() => {
+      if (pending && focus(pending.area, pending.restore, pending.selector)) cancelRequest();
+    });
+  };
+  const request = (target: WorkspaceFocusTarget) => {
+    cancelRequest();
+    pending = target;
+    // The key or click that made the request may still be propagating.
+    queueMicrotask(() => {
+      if (pending === target) cancelOnInput = true;
+    });
+    observer.observe(doc.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["inert", "aria-hidden", "data-workspace-unavailable"],
+    });
+    deadline = window.setTimeout(cancelRequest, 2000);
+    schedule();
+  };
+  const onUserInput = () => {
+    if (cancelOnInput) cancelRequest();
+  };
+  doc.addEventListener("pointerdown", onUserInput, true);
+  doc.addEventListener("keydown", onUserInput, true);
+
+  return {
+    move: (direction: 1 | -1, fromArea?: string, closingPalette = false) => {
+      cancelRequest();
+      return move(direction, fromArea, closingPalette);
+    },
+    focus,
+    request,
+    dispose: () => {
+      cancelRequest();
+      doc.removeEventListener("focusin", remember);
+      doc.removeEventListener("focusout", recover);
+      doc.removeEventListener("pointerdown", onUserInput, true);
+      doc.removeEventListener("keydown", onUserInput, true);
+    },
+  };
 }
 
-export const WORKSPACE_FOCUS_TARGET_EVENT = "t3:workspace-focus-target";
-export interface WorkspaceFocusTarget {
-  area: string;
-  selector?: string;
-  restore?: boolean;
-}
+let controller: ReturnType<typeof createWorkspaceFocusController> | undefined;
 let focusRequestVersion = 0;
 export const getWorkspaceFocusRequestVersion = () => focusRequestVersion;
+
+/**
+ * Starts workspace focus for the app: F6 area moves, focus requests, focus-loss recovery,
+ * focus into a panel the user opens, and focus into the Pull Requests page on entry.
+ */
+export function startWorkspaceFocus(router: AnyRouter): () => void {
+  const active = createWorkspaceFocusController(document);
+  controller = active;
+  const stopPanels = useRightPanelStore.subscribe((state, previous) => {
+    if (state.userActionRevisionByThreadKey === previous.userActionRevisionByThreadKey) return;
+    for (const [threadKey, revision] of Object.entries(state.userActionRevisionByThreadKey)) {
+      if (previous.userActionRevisionByThreadKey[threadKey] === revision) continue;
+      const next = state.byThreadKey[threadKey];
+      const before = previous.byThreadKey[threadKey];
+      if (next?.isOpen && (!before?.isOpen || next.activeSurfaceId !== before.activeSurfaceId))
+        requestWorkspaceFocus({ area: "panel" });
+    }
+  });
+  const stopRoute = router.subscribe("onResolved", ({ fromLocation, toLocation }) => {
+    if (toLocation.pathname === "/pull-requests" && fromLocation?.pathname !== "/pull-requests")
+      requestWorkspaceFocus({ area: "pull-requests" });
+  });
+  return () => {
+    stopPanels();
+    stopRoute();
+    active.dispose();
+    if (controller === active) controller = undefined;
+  };
+}
+
+/** Moves to the next or previous visible area. `fromArea` overrides the focused area. */
+export function moveWorkspaceFocus(direction: 1 | -1, fromArea?: string): boolean {
+  return controller?.move(direction, fromArea) ?? false;
+}
 
 /** Explicit user actions request focus after React has committed the destination. */
 export function requestWorkspaceFocus(target: WorkspaceFocusTarget) {
   focusRequestVersion++;
-  window.dispatchEvent(new CustomEvent(WORKSPACE_FOCUS_TARGET_EVENT, { detail: target }));
+  controller?.request(target);
 }
 
 export function requestWorkspaceContentFocus() {
@@ -246,7 +374,6 @@ export function requestWorkspaceContentFocus() {
   requestWorkspaceFocus({ area: "content" });
 }
 
-export const WORKSPACE_FOCUS_EVENT = "t3:workspace-focus";
 let pendingPaletteDirection: 1 | -1 | undefined;
 export function queueWorkspaceFocusFromPalette(direction: 1 | -1) {
   pendingPaletteDirection = direction;
@@ -257,8 +384,6 @@ export function restoreWorkspaceFocusFromPalette(): boolean {
   if (pendingPaletteDirection === undefined) return false;
   const direction = pendingPaletteDirection;
   pendingPaletteDirection = undefined;
-  window.requestAnimationFrame(() => {
-    window.dispatchEvent(new CustomEvent(WORKSPACE_FOCUS_EVENT, { detail: direction }));
-  });
+  window.requestAnimationFrame(() => controller?.move(direction, undefined, true));
   return true;
 }

@@ -22,7 +22,6 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 import { ArrowDownUpIcon, LayersIcon, Plug2Icon } from "lucide-react";
 import { useEffect, useEffectEvent, useRef, useState, type ComponentProps } from "react";
 
-import { useWorkspacePanelFocus } from "~/hooks/useWorkspacePanelFocus";
 import {
   collectPullRequestListFacets,
   narrowPullRequestsToFilters,
@@ -165,7 +164,6 @@ export function PullRequestsPage() {
     expectedHosts,
     projectsKnown,
   } = usePullRequestScope(search);
-  useWorkspacePanelFocus(PULL_REQUESTS_PANEL_REF);
   const rightPanelRef = capableEnvironments.length === 0 ? null : PULL_REQUESTS_PANEL_REF;
   const openPanelPullRequestUrl = useOpenPanelPullRequestUrl(rightPanelRef);
   const rightPanelState = useRightPanelStore((state) =>

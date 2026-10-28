@@ -1,4 +1,4 @@
-import { workspaceAreaProps } from "./WorkspaceNavigation";
+import { workspaceAreaProps } from "../lib/workspaceFocus";
 import { useAtomMount, useAtomValue } from "@effect/atom-react";
 import {
   isAtomCommandInterrupted,

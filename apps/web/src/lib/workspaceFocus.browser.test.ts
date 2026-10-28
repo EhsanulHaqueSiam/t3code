@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import { createWorkspaceFocusController } from "./workspaceFocus";
 
 function setup() {
@@ -204,5 +204,47 @@ describe("workspace area focus", () => {
     fixture.controller.move(-1);
     expect(document.activeElement).toBe(conversation.element);
     expect(timeline.scrollTop).toBe(300);
+  });
+
+  it("returns focus to the area when its focused control disappears", async () => {
+    using fixture = setup();
+    const panel = fixture.area("panel", 3);
+    const tab = document.createElement("button");
+    tab.textContent = "Files tab";
+    panel.element.append(tab);
+    tab.focus();
+    tab.remove();
+    await vi.waitFor(() => expect(document.activeElement).toBe(panel.button));
+  });
+
+  it("falls back to the main content when the whole area disappears", async () => {
+    using fixture = setup();
+    const composer = fixture.area("composer", 2);
+    const details = fixture.area("details", 3);
+    details.button.focus();
+    details.element.hidden = true;
+    await vi.waitFor(() => expect(document.activeElement).toBe(composer.button));
+  });
+
+  it("waits for a requested area to mount", async () => {
+    using fixture = setup();
+    fixture.area("composer", 2);
+    fixture.controller.request({ area: "pull-requests" });
+    const list = fixture.area("pull-requests", 1);
+    await vi.waitFor(() => expect(document.activeElement).toBe(list.button));
+  });
+
+  it("keeps focus on a control that React remounted elsewhere", async () => {
+    using fixture = setup();
+    fixture.area("composer", 2);
+    const header = fixture.append("<header></header>");
+    const toggle = document.createElement("button");
+    toggle.setAttribute("aria-label", "Toggle right panel");
+    header.append(toggle);
+    toggle.focus();
+    const moved = toggle.cloneNode() as HTMLButtonElement;
+    toggle.remove();
+    header.append(moved);
+    await vi.waitFor(() => expect(document.activeElement).toBe(moved));
   });
 });

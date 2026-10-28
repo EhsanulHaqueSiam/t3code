@@ -22,7 +22,6 @@ import { setLocalStorageItem } from "~/hooks/useLocalStorage";
 import { resolveSidebarState, type ResponsiveSidebarState } from "./sidebarState";
 import * as Schema from "effect/Schema";
 import { announceSidebarVisibility } from "~/lib/accessibilityAnnouncements";
-import { useWorkspaceFocusRecovery } from "~/hooks/useWorkspaceFocusRecovery";
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state";
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
@@ -197,7 +196,6 @@ function SidebarProvider({
   };
 
   const state = resolveSidebarState({ isMobile, open, openMobile });
-  useWorkspaceFocusRecovery("[data-app-sidebar]", `${isMobile}:${state}`);
 
   const contextValue: SidebarContextProps = {
     isMobile,

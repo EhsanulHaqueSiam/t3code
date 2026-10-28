@@ -93,7 +93,6 @@ import { writeTextToClipboard } from "../hooks/useCopyToClipboard";
 import {
   queueWorkspaceFocusFromPalette,
   restoreWorkspaceFocusFromPalette,
-  requestWorkspaceFocus,
 } from "../lib/workspaceFocus";
 import {
   composerPromptLink,
@@ -1519,7 +1518,6 @@ function OpenCommandPaletteDialog(props: {
       icon: <PullRequestGlyph.pullRequest className={ITEM_ICON_CLASS} />,
       run: async () => {
         await navigate({ to: "/pull-requests", search: readPullRequestListPreferences() });
-        requestWorkspaceFocus({ area: "pull-requests" });
       },
     });
   }

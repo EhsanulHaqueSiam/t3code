@@ -1,4 +1,4 @@
-import { workspaceAreaProps } from "../components/WorkspaceNavigation";
+import { workspaceAreaProps } from "../lib/workspaceFocus";
 import { Outlet, createFileRoute, redirect, useLocation } from "@tanstack/react-router";
 import { useState, type ReactNode } from "react";
 import { RotateCcwIcon } from "lucide-react";

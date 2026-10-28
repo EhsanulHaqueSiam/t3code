@@ -13,8 +13,7 @@ import {
 } from "../WorkspaceBreadcrumb";
 import { WorkspacePageContainer } from "../WorkspacePageContainer";
 import { WorkspacePageHeader } from "../WorkspacePageHeader";
-import { workspaceAreaProps, useWorkspacePageFocus } from "../WorkspaceNavigation";
-import { useWorkspaceFocusRecovery } from "~/hooks/useWorkspaceFocusRecovery";
+import { workspaceAreaProps } from "../../lib/workspaceFocus";
 import { PullRequestCompactFilterMenu } from "./PullRequestCompactFilterMenu";
 import type { PullRequestFilterOption } from "./PullRequestListFilters";
 import { INVOLVEMENT_TABS, STATE_TABS } from "./pullRequestListOptions";
@@ -111,8 +110,6 @@ export function PullRequestsColumn({
   scrollRef: RefObject<HTMLDivElement | null>;
 }) {
   const contentArea = workspaceAreaProps("pull-requests", 1, "Pull requests");
-  useWorkspacePageFocus("pull-requests");
-  useWorkspaceFocusRecovery('[data-workspace-area="pull-requests"]', maximizedAway, "panel");
   const markerRef = useRef<HTMLDivElement | null>(null);
   const [condensed, setCondensed] = useState(false);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- IntersectionObserver on the scroll marker condenses the topbar
