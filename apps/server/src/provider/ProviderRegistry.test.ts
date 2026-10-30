@@ -1,7 +1,4 @@
-import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as CodexErrors from "effect-codex-app-server/errors";
-import * as Path from "effect/Path";
-import * as FileSystem from "effect/FileSystem";
 import { vi } from "vite-plus/test";
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import * as CodexInstallation from "./CodexInstallation.ts";
