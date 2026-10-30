@@ -5,7 +5,6 @@ import type {
   UsageLimitSourceSnapshots,
 } from "@t3tools/contracts";
 import {
-  collectProviderUsageLimits,
   formatDuration,
   type LimitPace,
   limitsNotice,
@@ -21,6 +20,7 @@ import { cn } from "../../lib/utils";
 import { formatUpcomingTimestamp } from "../../timestampFormat";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { ThreadDetailsSection } from "./ThreadDetailsSection";
+import { resolveThreadDetailsLimits } from "./ThreadDetailsUsage.logic";
 
 const PACE_LABEL: Record<LimitPace, string> = {
   ahead: "Ahead of pace",
@@ -36,7 +36,8 @@ export interface ThreadDetailsUsageInput {
 }
 
 /**
- * The selected provider's limit windows and the thread's context window.
+ * The selected provider's limit windows, or its usage hub's when it reads none of its own,
+ * and the thread's context window.
  * Every row reads as room left, so a longer bar always means more headroom.
  */
 export function ThreadDetailsUsage({
@@ -47,15 +48,8 @@ export function ThreadDetailsUsage({
 }: ThreadDetailsUsageInput) {
   const nowMinute = useNowMinute();
   const now = Date.parse(`${nowMinute}:00Z`);
-  const report =
-    providerInstanceId !== null
-      ? collectProviderUsageLimits(providerInstanceId, providers, sources, now)
-      : null;
-  // Only this instance's data: the report keeps one instance per login, and any other entry may be
-  // a different login or workspace, so fall back to the instance's own snapshot.
-  const limits =
-    report?.accounts.find((entry) => entry.instanceId === providerInstanceId)?.limits ??
-    providers.find((provider) => provider.instanceId === providerInstanceId)?.usageLimits;
+  const resolved = resolveThreadDetailsLimits(providerInstanceId, providers, sources, now);
+  const limits = resolved?.limits;
   const notice = limits ? limitsNotice(limits) : null;
   if (!limits && !contextWindow) return null;
 
@@ -75,7 +69,14 @@ export function ThreadDetailsUsage({
           />
         ) : null}
         {limits && !notice
-          ? limits.windows.map((window) => <LimitRow key={window.id} window={window} now={now} />)
+          ? limits.windows.map((window) => (
+              <LimitRow
+                key={window.id}
+                window={window}
+                now={now}
+                sourceLabel={resolved?.sourceLabel ?? null}
+              />
+            ))
           : null}
         {contextWindow ? <ContextRow usage={contextWindow} spaced={limits !== undefined} /> : null}
       </div>
@@ -86,9 +87,11 @@ export function ThreadDetailsUsage({
 function LimitRow({
   window,
   now,
+  sourceLabel,
 }: {
   readonly window: ServerProviderUsageWindow;
   readonly now: number;
+  readonly sourceLabel: string | null;
 }) {
   const timestampFormat = usePrimarySettings((settings) => settings.timestampFormat);
   const left = remainingPercent(window);
@@ -110,6 +113,7 @@ function LimitRow({
             </span>
           ) : null}
           {pace ? <span className="text-muted-foreground">{PACE_LABEL[pace]}</span> : null}
+          {sourceLabel ? <span className="text-muted-foreground">From {sourceLabel}</span> : null}
         </>
       }
     />
