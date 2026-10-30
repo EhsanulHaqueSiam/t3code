@@ -5015,11 +5015,45 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
 
       yield* send(1, "queue_after_active");
       yield* orchestrator.resumeQueuedRuns;
-      const queued = (yield* orchestrator.getThreadProjection(threadId)).runs.find(
-        (run) => run.userMessageId === MessageId.make(`${threadId}:1`),
-      );
+      const runFor = (index: number) =>
+        Effect.map(orchestrator.getThreadProjection(threadId), ({ runs }) =>
+          runs.find((run) => run.userMessageId === MessageId.make(`${threadId}:${index}`)),
+        );
+      const queued = yield* runFor(1);
       assert.equal(queued?.status, "queued");
       assert.notEqual(queued?.queueHeld, true);
+
+      yield* orchestrator.dispatch({
+        type: "message.dispatch",
+        commandId: CommandId.make(`${threadId}:2`),
+        threadId,
+        messageId: MessageId.make(`${threadId}:2`),
+        manualContinuationOfRunId: limited.id,
+        text: "Continue where you left off.",
+        attachments: [],
+        createdBy: "user",
+        creationSource: "web",
+        dispatchMode: { type: "start_immediately" },
+      });
+      const continuation = yield* runFor(2);
+      assert.equal(continuation?.status, "starting");
+      assert.equal((yield* runFor(1))?.status, "queued");
+      const completedAt = yield* DateTime.now;
+      yield* eventSink.write({
+        events: [
+          {
+            id: EventId.make(`${threadId}:continuation:completed`),
+            type: "run.updated",
+            threadId,
+            runId: continuation!.id,
+            providerInstanceId: continuation!.providerInstanceId,
+            occurredAt: completedAt,
+            payload: { ...continuation!, status: "completed", startedAt: completedAt, completedAt },
+          },
+        ],
+      });
+      yield* orchestrator.resumeQueuedRuns;
+      assert.equal((yield* runFor(1))?.status, "starting");
     }),
   );
 
