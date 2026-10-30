@@ -445,15 +445,13 @@ export const readClaudeSettingsBaseUrl = Effect.fn("readClaudeSettingsBaseUrl")(
   const path = yield* Path.Path;
   const platform = yield* HostProcess.Platform;
   const configDirPath = yield* resolveClaudeConfigDirPath(config, environment, cwd);
-  const repositoryRoot = cwd === undefined ? undefined : yield* findRepositoryRoot(cwd);
   let baseUrl: string | undefined;
   for (const settingsPath of claudeSettingsPaths(
     path,
     configDirPath,
-    cwd,
+    undefined,
     platform,
     environment,
-    repositoryRoot,
   )) {
     const contents = yield* fileSystem
       .readFileString(settingsPath)
@@ -466,6 +464,7 @@ export const readClaudeSettingsBaseUrl = Effect.fn("readClaudeSettingsBaseUrl")(
   }
   return baseUrl;
 });
+
 // Claude's --add-dir is repeatable and variadic; parseCliArgs keeps only one value.
 export function claudeLaunchArgDirectories(launchArgs?: string): ReadonlyArray<string> {
   const directories: string[] = [];
