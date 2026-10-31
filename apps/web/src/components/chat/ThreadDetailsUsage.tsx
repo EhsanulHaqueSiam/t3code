@@ -32,6 +32,8 @@ export interface ThreadDetailsUsageInput {
   readonly providerInstanceId: ProviderInstanceId | null;
   readonly providers: readonly ServerProvider[];
   readonly sources: UsageLimitSourceSnapshots;
+  /** The thread's native provider session, which a usage hub may report routing. */
+  readonly providerSessionId: string | null;
   readonly contextWindow: ContextWindowSnapshot | null;
 }
 
@@ -44,11 +46,18 @@ export function ThreadDetailsUsage({
   providerInstanceId,
   providers,
   sources,
+  providerSessionId,
   contextWindow,
 }: ThreadDetailsUsageInput) {
   const nowMinute = useNowMinute();
   const now = Date.parse(`${nowMinute}:00Z`);
-  const resolved = resolveThreadDetailsLimits(providerInstanceId, providers, sources, now);
+  const resolved = resolveThreadDetailsLimits(
+    providerInstanceId,
+    providers,
+    sources,
+    now,
+    providerSessionId,
+  );
   const limits = resolved?.limits;
   const notice = limits ? limitsNotice(limits) : null;
   if (!limits && !contextWindow) return null;
